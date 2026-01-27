@@ -389,19 +389,10 @@ def plot_density_contours(
         valid_mask &= np.isfinite(weights)
         weights = weights[valid_mask]
 
-    # Apply the final joint mask to coordinates
-    xy = np.vstack([ra[valid_mask], dec[valid_mask]])
+    ra = ra[valid_mask]
+    dec = dec[valid_mask]
 
-    # KDE
-    kde = gaussian_kde(xy, bw_method=bandwidth, weights=weights)
-
-    # Grid to evaluate KDE
     npix = 300
-    ra_grid = np.linspace(ra.min(), ra.max(), npix)
-    dec_grid = np.linspace(dec.min(), dec.max(), npix)
-    ra_mesh, dec_mesh = np.meshgrid(ra_grid, dec_grid)
-    density = kde(np.vstack([ra_mesh.ravel(), dec_mesh.ravel()])).reshape(ra_mesh.shape)
-
     if wcs is None:
     # Construct dummy WCS from extent of data
         nx, ny = npix, npix
@@ -411,8 +402,18 @@ def plot_density_contours(
         wcs.wcs.crval = [(ra.max() + ra.min()) / 2, (dec.max() + dec.min()) / 2]
         wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
 
-    # Convert meshgrid to pixel coordinates
-    pix_x, pix_y = wcs.wcs_world2pix(ra_mesh, dec_mesh, 0)
+    x, y = wcs.wcs_world2pix(ra, dec, 0)
+    xy = np.vstack([x, y])
+
+    # KDE
+    kde = gaussian_kde(xy, bw_method=bandwidth, weights=weights)
+
+    # Grid to evaluate KDE
+    x_grid = np.linspace(x.min(), x.max(), npix)
+    y_grid = np.linspace(y.min(), y.max(), npix)
+    x_mesh, y_mesh = np.meshgrid(x_grid, y_grid)
+    density = kde(np.vstack([x_mesh.ravel(), y_mesh.ravel()])).reshape(x_mesh.shape)
+
 
     # WCS-aware plot
     fig = plt.figure(figsize=(8, 8))
@@ -420,9 +421,9 @@ def plot_density_contours(
 
 
     if fill:
-        ax.contourf(pix_x, pix_y, density, levels=levels, cmap="inferno")
+        ax.contourf(x_mesh, y_mesh, density, levels=levels, cmap="inferno")
     else:
-        ax.contour(pix_x, pix_y, density, levels=levels, colors=base_color, transform=ax.get_transform('icrs'))
+        ax.contour(x_mesh, y_mesh, density, levels=levels, colors=base_color)
 
 
     title = f"{survey} {color_type} Density Map"
@@ -432,6 +433,7 @@ def plot_density_contours(
 
     ax.set_xlabel("R.A.")
     ax.set_ylabel("Decl.")
+    ax.set_box_aspect(1)
 
     plt.tight_layout()
 
