@@ -29,6 +29,7 @@ import csv
 
 import pandas as pd
 
+from pathlib import Path
 from typing import Any
 from astropy.coordinates import SkyCoord, Angle
 import astropy.units as u
@@ -95,7 +96,9 @@ class Cluster:
 # Defaults/ Constants
 # ------------------------------------
     BASE_PATH_ENV_VAR = "XSORTER_CLUSTER_BASE_PATH"
-    DEFAULT_BASE_PATH = os.environ.get(BASE_PATH_ENV_VAR, os.path.join(os.path.dirname(os.path.abspath(__file__)), "Clusters"))
+    _REPO_ROOT = Path(__file__).resolve().parent
+    _REPO_CLUSTER_PATH = _REPO_ROOT.parent/"Clusters"
+    DEFAULT_BASE_PATH = Path(os.environ.get(BASE_PATH_ENV_VAR, _REPO_CLUSTER_PATH)).expanduser().resolve()
     MASTER_FILE_NAME = "clusters.csv"
     BCG_FILE_NAME = "candidate_mergers.csv"
 
