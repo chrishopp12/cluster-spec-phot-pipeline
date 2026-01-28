@@ -89,11 +89,11 @@ import json
 
 import numpy as np
 
-from archival_z_pipeline import run_redshift_pipeline
-from archival_phot_pipeline import run_photometry_pipeline
-from make_catalogs_pipeline import build_redshift_catalog
-from color_magnitude_pipeline import run_cmd_pipeline
-from color_magnitude_plotting import run_cluster_plots
+from spec_phot_pipeline.archival_z_pipeline import run_redshift_pipeline
+from spec_phot_pipeline.archival_phot_pipeline import run_photometry_pipeline
+from spec_phot_pipeline.make_catalogs_pipeline import build_redshift_catalog
+from spec_phot_pipeline.color_magnitude_pipeline import run_cmd_pipeline
+from spec_phot_pipeline.color_magnitude_plotting import run_cluster_plots
 from my_utils import str2bool
 from cluster import Cluster
 

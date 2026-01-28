@@ -53,7 +53,7 @@ from sklearn.linear_model import LinearRegression
 
 from cluster import Cluster
 from my_utils import str2bool, finalize_figure, load_dataframes, get_color_mag_functions, split_members_by_spec
-from color_magnitude_plotting import plot_cmd, plot_spatial
+from spec_phot_pipeline.color_magnitude_plotting import plot_cmd, plot_spatial
 
 
 # ------------------------------------

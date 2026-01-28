@@ -480,7 +480,7 @@ def run_cluster_plots(
     save_plots : bool, optional
         If True, saves plots to disk. [default: True]
     """
-    from color_magnitude_pipeline import fit_red_sequence
+    from spec_phot_pipeline.color_magnitude_pipeline import fit_red_sequence
 
     img_dir = os.path.join(cluster.photometry_path, "Images")
     os.makedirs(img_dir, exist_ok=True)
