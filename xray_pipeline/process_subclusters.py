@@ -91,8 +91,8 @@ from scipy.spatial import ConvexHull
 
 from cluster import Cluster
 from my_utils import load_dataframes, pop_prefixed_kwargs, str2bool, load_bcg_catalog, load_photo_coords
-from process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms, process_redshifts
-from xray_plotting import plot_redshift_overlay, plot_optical, make_plots
+from xray_pipeline.process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms, process_redshifts
+from xray_pipeline.xray_plotting import plot_redshift_overlay, plot_optical, make_plots
 # from run_cmd_pipeline import run_full_pipeline
 
 import scipy.stats
