@@ -50,7 +50,8 @@ Notes:
     - Overlay and contour appearance is highly customizable through CLI or kwargs.
 
 """
-import os, argparse
+import os
+import argparse
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -62,6 +63,9 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 from matplotlib.collections import LineCollection
 
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+from scipy.ndimage import map_coordinates
 
 from reproject import reproject_interp
 from reproject import reproject_adaptive
@@ -236,10 +240,6 @@ def plot_optical(
     else:
         return fig, ax, final_handles, final_labels
 
-import numpy as np
-from astropy.coordinates import SkyCoord
-import astropy.units as u
-from scipy.ndimage import map_coordinates
 
 def profile_between_points(
     image2d,
