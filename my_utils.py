@@ -59,6 +59,36 @@ COSMO = FlatLambdaCDM(H0=70, Om0=0.3)
 
 
 # ------------------------------------
+# Miscellaneous Utilities
+# ------------------------------------
+
+def string_to_numeric(s: str) -> float | int | str:
+    """
+    Converts a string to a numeric type if possible.
+
+    Parameters
+    ----------
+    s : str
+        Input string.
+
+    Returns
+    -------
+    float | int | str
+        Converted numeric value or original string if conversion fails.
+    """
+    s = s.strip()
+    if s == '':
+        return s
+    try:
+        if '.' in s or 'e' in s.lower():
+            return float(s)
+        else:
+            return int(s)
+    except Exception:
+        return s
+
+
+# ------------------------------------
 # File and Directory Utilities
 # ------------------------------------
 
