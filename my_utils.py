@@ -974,7 +974,7 @@ def arcsec_to_pixel_std(
     """
 
     # Pixel scale in arcsec/pixel
-    pixscale = float(np.abs(wcs.proj_plane_pixel_scales()[0])) * 3600  # deg/pixel to arcsec/pixel
+    pixscale = np.abs(wcs.proj_plane_pixel_scales()[0]).to_value(u.arcsec)
 
     fwhm_pixels = fwhm_arcsec / pixscale
     sigma_pixels = float(fwhm_pixels / 2.355)  # Convert FWHM to sigma
