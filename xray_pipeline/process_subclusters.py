@@ -281,7 +281,7 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
     default_colors = [
         "white", "tab:green", "tab:purple", "tab:cyan", "tab:pink", "gold", "tab:orange", "tab:green", "tab:purple", "tab:pink"
     ]
-    default_labels = ["1", "2", "3", "4", "5", "A", "B", "C", "D", "E"]
+    default_labels = ["1", "2", "3", "4", "5", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
     default_radius = 2.0
 
 
@@ -294,14 +294,15 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
         else:
             raise ValueError("Each subcluster must be an int or dict (with 'bcg_id').")
 
-        idx = bcg_id - 1
+        color_idx = (bcg_id - 1) % len(default_colors)
+        label_idx = bcg_id - 1
         base = configs.get(bcg_id, {})
 
         # Merge: priority is kwargs/subcluster > csv > default
         out = dict(base)
         out["bcg_id"]    = bcg_id
-        out["bcg_label"] = _merged_field("bcg_label", j, bcg_id, base, default_labels[idx])
-        out["color"]     = _merged_field("color", j, bcg_id, base, default_colors[idx])
+        out["bcg_label"] = _merged_field("bcg_label", j, bcg_id, base, default_labels[label_idx])
+        out["color"]     = _merged_field("color", j, bcg_id, base, default_colors[color_idx])
         out["radius"]    = _merged_field("radius", j, bcg_id, base, default_radius)
         out["z_range"]   = _get_z_range(j, bcg_id, base)
         out['center'] = load_bcg_location(bcg_df, bcg_id=bcg_id)
