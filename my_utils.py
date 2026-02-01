@@ -23,6 +23,8 @@ from __future__ import annotations
 import os
 import re
 import argparse
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
@@ -101,6 +103,32 @@ def make_directories(
     os.makedirs(redshift_dir, exist_ok=True)
 
     return photometry_dir, redshift_dir
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    """
+    Reads a JSON file and returns its contents as a dictionary.
+
+    Parameters
+    ----------
+    path : Path
+        Path to the JSON file.
+
+    Returns
+    -------
+    dict
+        Contents of the JSON file as a dictionary.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError as e:
+        raise FileNotFoundError(f"JSON file not found: {path}") from e
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Error decoding JSON from file: {path}") from e
+    
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected JSON file to contain a dictionary, got {type(data)}")
+    return data
 
 
 # ------------------------------------
