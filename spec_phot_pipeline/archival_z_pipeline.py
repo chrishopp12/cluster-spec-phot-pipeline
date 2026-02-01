@@ -52,6 +52,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 
 from astroquery.ipac.ned import Ned
+from astroquery.ipac.ned import Conf as NedConf
 from astroquery.utils.tap.core import TapPlus
 
 from cluster import Cluster
@@ -64,7 +65,7 @@ DEFAULT_RADIUS_ARCMIN = 10.0
 DEFAULT_TOLERANCE_DEG = 1.0 / 3600.0  # 1 arcsec
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_INITIAL_WAIT = 5  # seconds
-DEFAULT_TIMEOUT = 60  # seconds
+DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_SDSS_TOP_N = 100
 
 SDSS_URL = "https://skyserver.sdss.org/CasJobs/RestApi/contexts/DR18/query"
@@ -82,6 +83,7 @@ def query_ned(
         *,
         max_retries: int = DEFAULT_MAX_RETRIES,
         initial_wait: int = DEFAULT_INITIAL_WAIT,
+        timeout: int = DEFAULT_TIMEOUT,
     ) -> pd.DataFrame:
     """
     Queries NED for SLS-type spectroscopic redshifts around a coordinate.
@@ -105,6 +107,7 @@ def query_ned(
     # TODO: Get references, ned_table = Ned.get_table(name, table='references'), but you get
     # multiple entries per query and would need to query each galaxy. 
 
+    NedConf.timeout = timeout
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Querying NED (attempt {attempt}/{max_retries}) for RA={coord.ra.deg}, Dec={coord.dec.deg}...")
