@@ -165,6 +165,12 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
             return v
         v_all = kwargs.get(key, None)
         if v_all is not None:
+            # Special handling for z_range/group_z_range (tuple of two floats)
+            if key in {"z_range", "group_z_range"}:
+                if isinstance(v_all, (list, tuple)) and len(v_all) == 2 and all(
+                    isinstance(x, (int, float, np.floating, np.integer)) for x in v_all
+                ):
+                    return (float(v_all[0]), float(v_all[1]))
             # If list/tuple, select by subcluster index
             if isinstance(v_all, (list, tuple)):
                 if len(v_all) > i:
