@@ -10,7 +10,7 @@ __pycache__/
 .DS_Store
 
 # -----------------------
-# Data products (never commit)
+# Data products
 # -----------------------
 *.fits
 *.fit
