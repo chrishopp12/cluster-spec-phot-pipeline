@@ -88,6 +88,25 @@ def string_to_numeric(s: str) -> float | int | str:
         return s
 
 
+def find_first_val(*vals: Any) -> Any:
+    """
+    Returns the first non-None value from the provided arguments.
+
+    Parameters
+    ----------
+    *vals : Any
+        Variable number of arguments.
+
+    Returns
+    -------
+    Any
+        The first non-None value, or None if all are None.
+    """
+    for v in vals:
+        if v is not None:
+            return v
+    return None
+
 # ------------------------------------
 # File and Directory Utilities
 # ------------------------------------
