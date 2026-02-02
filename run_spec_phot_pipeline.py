@@ -453,7 +453,7 @@ def main():
         help="Show plots? [default: False]"
     )
     parser.add_argument(
-        "--bcg",
+        "--manual-bcg",
         nargs=2,
         type=float,
         action="append",
@@ -549,7 +549,7 @@ def main():
         if val is not None:
             cluster_kwargs[key.replace("-", "_")] = val
 
-    manual_list = [tuple(x) for x in (args.bcg or [])]  # list[tuple[float, float]]
+    manual_list = [tuple(x) for x in (args.manual_bcg or [])]  # list[tuple[float, float]]
 
     redshift_kwargs = _parse_json_kwargs(args.redshift_kwargs, "--redshift-kwargs")
     photometry_kwargs = _parse_json_kwargs(args.photometry_kwargs, "--photometry-kwargs")
