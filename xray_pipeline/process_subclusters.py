@@ -3459,7 +3459,7 @@ def analyze_cluster(
         cluster,
         subcluster_configs,
         legend_loc="upper right",
-        manual_lists=None,
+        manual_list=None,
         combined_groups=None,
         show_plots=True,
         save_plots=False,
