@@ -3655,6 +3655,7 @@ def analyze_cluster(
         cluster,
         subcluster_configs,
         legend_loc="upper right",
+        manual_lists=None,
         combined_groups=None,
         show_plots=True,
         save_plots=False,
@@ -3668,7 +3669,7 @@ def analyze_cluster(
     os.makedirs(save_path, exist_ok=True)
 
     # if run_pipeline:
-    #     run_full_pipeline(cluster, save_plots=save_plots, show_plots=show_plots)
+    #     run_full_pipeline(cluster, manual_list=manual_list,save_plots=save_plots, show_plots=show_plots)
     #     process_redshifts(cluster, save_plots=save_plots, show_plots=show_plots)
     #     make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
 
