@@ -3713,65 +3713,65 @@ def parse_subcluster_kwargs(cli_args):
             i += 1
     return kw
 
-# def main():
-#     parser = argparse.ArgumentParser(description="Analyze cluster substructures and build subcluster configs.")
+def main():
+    parser = argparse.ArgumentParser(description="Analyze cluster substructures and build subcluster configs.")
 
-#     # -- Required arguments --
-#     parser.add_argument("cluster_id", type=str, help="Cluster ID (e.g. '1327') or full RMJ/Abell name.")
-#     parser.add_argument("--subclusters", nargs="+", type=int, required=True,
-#         help="List of BCG indices or subcluster IDs (e.g., 2 6 7).")
+    # -- Required arguments --
+    parser.add_argument("cluster_id", type=str, help="Cluster ID (e.g. '1327') or full RMJ/Abell name.")
+    parser.add_argument("--subclusters", nargs="+", type=int, required=True,
+        help="List of BCG indices or subcluster IDs (e.g., 2 6 7).")
 
-#     # -- Cluster options --
-#     parser.add_argument("--z-min", type=float, default=None, help="Minimum redshift for analysis.")
-#     parser.add_argument("--z-max", type=float, default=None, help="Maximum redshift for analysis.")
-#     parser.add_argument("--fov", type=float, default=None, help="Zoomed field of view in arcmin.")
-#     parser.add_argument("--fov-full", type=float, default=None, help="Full field of view in arcmin.")
-#     parser.add_argument("--ra-offset", type=float, default=None, help="RA offset in arcmin.")
-#     parser.add_argument("--dec-offset", type=float, default=None, help="Dec offset in arcmin.")
+    # -- Cluster options --
+    parser.add_argument("--z-min", type=float, default=None, help="Minimum redshift for analysis.")
+    parser.add_argument("--z-max", type=float, default=None, help="Maximum redshift for analysis.")
+    parser.add_argument("--fov", type=float, default=None, help="Zoomed field of view in arcmin.")
+    parser.add_argument("--fov-full", type=float, default=None, help="Full field of view in arcmin.")
+    parser.add_argument("--ra-offset", type=float, default=None, help="RA offset in arcmin.")
+    parser.add_argument("--dec-offset", type=float, default=None, help="Dec offset in arcmin.")
 
-#     # -- Global subcluster options --
-#     parser.add_argument("--radius", type=float, default=None, help="Default search radius for all subclusters (Mpc).")
-#     parser.add_argument("--z-range", nargs=2, type=float, default=None, metavar=("ZMIN", "ZMAX"), help="Global z_range for subclusters.")
-#     parser.add_argument("--colors", nargs="+", default=None, help="List of colors for subclusters (e.g., tab:green gold tab:cyan).")
-#     parser.add_argument("--labels", nargs="+", default=None, help="List of labels for subclusters.")
+    # -- Global subcluster options --
+    parser.add_argument("--radius", type=float, default=None, help="Default search radius for all subclusters (Mpc).")
+    parser.add_argument("--z-range", nargs=2, type=float, default=None, metavar=("ZMIN", "ZMAX"), help="Global z_range for subclusters.")
+    parser.add_argument("--colors", nargs="+", default=None, help="List of colors for subclusters (e.g., tab:green gold tab:cyan).")
+    parser.add_argument("--labels", nargs="+", default=None, help="List of labels for subclusters.")
 
-#     # -- X-ray/density/display options --
-#     parser.add_argument("--xray-levels", type=str, default=None, help="Comma-separated contour levels for X-ray (e.g. '0.5,0,12').")
-#     parser.add_argument("--psf", type=float, default=None, help="PSF for X-ray smoothing.")
-#     parser.add_argument("--density-levels", type=int, default=None, help="Number of density contour levels.")
-#     parser.add_argument("--density-skip", type=int, default=None, help="Number of density levels to skip.")
-#     parser.add_argument("--density-bandwidth", type=float, default=None, help="Bandwidth for density estimation.")
+    # -- X-ray/density/display options --
+    parser.add_argument("--xray-levels", type=str, default=None, help="Comma-separated contour levels for X-ray (e.g. '0.5,0,12').")
+    parser.add_argument("--psf", type=float, default=None, help="PSF for X-ray smoothing.")
+    parser.add_argument("--density-levels", type=int, default=None, help="Number of density contour levels.")
+    parser.add_argument("--density-skip", type=int, default=None, help="Number of density levels to skip.")
+    parser.add_argument("--density-bandwidth", type=float, default=None, help="Bandwidth for density estimation.")
 
-#     parser.add_argument("--save-plots", type=str2bool, nargs="?", const=True, default=True, help="Save plots? [default: True]")
-#     parser.add_argument("--show-plots", type=str2bool, nargs="?", const=True, default=False, help="Show plots? [default: False]")
-#     parser.add_argument("--plot-alt-regions", type=str2bool, nargs="?", const=True, default=False, help="Plot alternative regions? [default: False]")
-#     parser.add_argument("--run-pipeline", type=str2bool, nargs="?", const=True, default=False, help="Run full pipeline (redshift processing, plots)? [default: False]")    
+    parser.add_argument("--save-plots", type=str2bool, nargs="?", const=True, default=True, help="Save plots? [default: True]")
+    parser.add_argument("--show-plots", type=str2bool, nargs="?", const=True, default=False, help="Show plots? [default: False]")
+    parser.add_argument("--plot-alt-regions", type=str2bool, nargs="?", const=True, default=False, help="Plot alternative regions? [default: False]")
+    parser.add_argument("--run-pipeline", type=str2bool, nargs="?", const=True, default=False, help="Run full pipeline (redshift processing, plots)? [default: False]")    
 
-#     # -- Catch-all for extra per-subcluster kwargs (e.g. --color_4) --
-#     parser.add_argument("--subcluster-kwargs", nargs=argparse.REMAINDER, help="Extra per-subcluster args (e.g. --color_4 tab:orange --label_2 Main)")
+    # -- Catch-all for extra per-subcluster kwargs (e.g. --color_4) --
+    parser.add_argument("--subcluster-kwargs", nargs=argparse.REMAINDER, help="Extra per-subcluster args (e.g. --color_4 tab:orange --label_2 Main)")
 
-#     # Parse known and unknown
-#     args, unknown = parser.parse_known_args()
+    # Parse known and unknown
+    args, unknown = parser.parse_known_args()
 
 
 
-#     # -- Parse known CLI for cluster construction --
-#     cluster_kwargs = {}
-#     for key in ("fov", "fov_full", "ra_offset", "dec_offset", "density_levels", "density_skip", "density_bandwidth", "xray_levels", "psf", "z_min", "z_max"):
-#         val = getattr(args, key, None)
-#         if val is not None:
-#             cluster_kwargs[key.replace("-", "_")] = val
+    # -- Parse known CLI for cluster construction --
+    cluster_kwargs = {}
+    for key in ("fov", "fov_full", "ra_offset", "dec_offset", "density_levels", "density_skip", "density_bandwidth", "xray_levels", "psf", "z_min", "z_max"):
+        val = getattr(args, key, None)
+        if val is not None:
+            cluster_kwargs[key.replace("-", "_")] = val
 
-#     # Parse xray_levels tuple
-#     if args.xray_levels is not None:
-#         cluster_kwargs["contour_levels"] = tuple(float(x) for x in args.xray_levels.split(","))
-#         print(f"Using X-ray contour levels: {cluster_kwargs['contour_levels']}")
-#     if args.density_levels is not None:
-#         cluster_kwargs["phot_levels"] = args.density_levels
-#     if args.density_skip is not None:
-#         cluster_kwargs["phot_skip"] = args.density_skip
-#     if args.density_bandwidth is not None:
-#         cluster_kwargs["bandwidth"] = args.density_bandwidth
+    # Parse xray_levels tuple
+    if args.xray_levels is not None:
+        cluster_kwargs["contour_levels"] = tuple(float(x) for x in args.xray_levels.split(","))
+        print(f"Using X-ray contour levels: {cluster_kwargs['contour_levels']}")
+    if args.density_levels is not None:
+        cluster_kwargs["phot_levels"] = args.density_levels
+    if args.density_skip is not None:
+        cluster_kwargs["phot_skip"] = args.density_skip
+    if args.density_bandwidth is not None:
+        cluster_kwargs["bandwidth"] = args.density_bandwidth
 
     # -- Build the Cluster object --
     cluster = Cluster(args.cluster_id, **cluster_kwargs)
