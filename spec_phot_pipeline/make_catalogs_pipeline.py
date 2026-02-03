@@ -580,7 +580,7 @@ def get_BCG(
         if cluster.coords is not None:
             rm_cands = query_redmapper_bcg_candidates(
                 cluster.coords,
-                radius_arcmin=5.0,
+                radius_arcmin=10.0,
                 verbose=verbose,
             )
             if rm_cands:
