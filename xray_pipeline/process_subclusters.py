@@ -65,7 +65,8 @@ Notes:
 """
 
 
-import os, argparse, yaml, ast
+import os
+import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -74,14 +75,14 @@ import pandas as pd
 from astropy.io import fits
 from astropy.wcs import WCS
 from astropy import units as u
-from astropy.coordinates import SkyCoord, CartesianRepresentation, Angle, SkyCoord
+from astropy.coordinates import SkyCoord, CartesianRepresentation, Angle
 from astropy.constants import c
 
 import matplotlib as mpl
 from matplotlib.patches import ConnectionPatch, Polygon
 from matplotlib.ticker import FuncFormatter
 from matplotlib.gridspec import GridSpec
-from matplotlib.ticker import MaxNLocator, MultipleLocator, FuncFormatter, FormatStrFormatter
+from matplotlib.ticker import MaxNLocator, MultipleLocator, FormatStrFormatter
 
 from collections import defaultdict
 
@@ -90,9 +91,9 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.spatial import ConvexHull
 
 from cluster import Cluster
-from my_utils import load_dataframes, pop_prefixed_kwargs, str2bool, load_bcg_catalog, load_photo_coords
-from xray_pipeline.process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms, process_redshifts
-from xray_pipeline.xray_plotting import plot_redshift_overlay, plot_optical, make_plots
+from my_utils import load_dataframes, pop_prefixed_kwargs, str2bool, load_bcg_catalog
+from xray_pipeline.process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms
+from xray_pipeline.xray_plotting import plot_redshift_overlay, plot_optical
 # from run_cmd_pipeline import run_full_pipeline
 
 import scipy.stats
