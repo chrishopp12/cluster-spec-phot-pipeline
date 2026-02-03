@@ -249,8 +249,10 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
                 "z_range_max": z_range[1] if z_range else "",
             }
             # optional group metadata
-            if "group_id" in cfg:       row["group_id"] = cfg["group_id"]
-            if "is_dominant" in cfg:    row["is_dominant"] = int(cfg["is_dominant"])
+            if "group_id" in cfg:
+                row["group_id"] = cfg["group_id"]
+            if "is_dominant" in cfg:
+                row["is_dominant"] = int(cfg["is_dominant"])
             if "group_members" in cfg:
                 gm = cfg.get("group_members", ())
                 if isinstance(gm, (list, tuple)) and len(gm) > 0:
@@ -258,8 +260,10 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
                 else:
                     row["group_members"] = ""
 
-            if "group_label" in cfg:    row["group_label"] = cfg["group_label"]
-            if "group_color" in cfg:    row["group_color"] = cfg["group_color"]
+            if "group_label" in cfg:
+                row["group_label"] = cfg["group_label"]
+            if "group_color" in cfg:
+                row["group_color"] = cfg["group_color"]
             gz = cfg.get("group_z_range")
             if gz:
                 row["group_z_range_min"] = gz[0]
@@ -1324,7 +1328,7 @@ def assign_subcluster_members_multi(subcluster_configs, galaxies_df, plot=False)
     if plot:
         
         fig, ax = plt.subplots(figsize=(6, 6))
-        scatter = ax.scatter(df_valid['RA'], df_valid['Dec'], c=region_ids, cmap='tab10', s=20, label='Galaxies')
+        ax.scatter(df_valid['RA'], df_valid['Dec'], c=region_ids, cmap='tab10', s=20, label='Galaxies')
         ax.scatter([c.ra.deg for c in centers], [c.dec.deg for c in centers], 
                 c='black', s=100, marker='x', label='Centers')
 
@@ -1398,7 +1402,7 @@ def filter_members_by_config(member_groups, subcluster_configs, spec=True):
         sep = coords.separation(centers[i]).arcmin
 
         if spec and 'z' in df.columns:
-            print(f"\n------------------------------------------------------")
+            print("\n------------------------------------------------------")
             print(f"Filtering Region {i+1} Spectroscopic Members")
             print(f"  Redshift range: {zmin:.4f} - {zmax:.4f}")
             print(f"      Radial cut: {max_radius} arcmin")
@@ -1407,7 +1411,7 @@ def filter_members_by_config(member_groups, subcluster_configs, spec=True):
             in_z = has_z & (z >= zmin) & (z <= zmax)
             keep = (sep < max_radius) & (in_z | ~has_z)
         else:
-            print(f"\n------------------------------------------------------")
+            print("\n------------------------------------------------------")
             print(f"Filtering Region {i+1} Photometric Members")
             print(f"      Radial cut: {max_radius} arcmin")
             keep = sep < max_radius
@@ -2022,8 +2026,8 @@ def plot_subcluster_members_and_regions(
     )
 
     if show_legend:
-        l = ax.legend(handles=scatter_handles, labels=labels, loc=legend_loc, fontsize=12, frameon=True)
-        l.set_zorder(20)
+        legend = ax.legend(handles=scatter_handles, labels=labels, loc=legend_loc, fontsize=12, frameon=True)
+        legend.set_zorder(20)
 
     if save_plots and save_path is not None:
         plt.tight_layout()
@@ -2387,7 +2391,7 @@ def plot_stacked_redshift_histograms(
     ax_comb.legend(loc='upper right', fontsize=10, frameon=True, framealpha=0.8)
 
     fig.supylabel("Galaxy Counts", fontsize=16)
-    axes[0].set_title(f" ", fontsize=6)
+    axes[0].set_title(" ", fontsize=6)
 
     ax_all_z = axes[-1]
 
@@ -2483,8 +2487,8 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
 
 
     ax1.set_aspect('equal') 
-    l = ax1.legend(handles=handles, labels=labels, loc=legend_loc, fontsize=10, frameon=True)
-    l.set_zorder(200)
+    legend = ax1.legend(handles=handles, labels=labels, loc=legend_loc, fontsize=10, frameon=True)
+    legend.set_zorder(200)
 
     fig.subplots_adjust(top=0.98, bottom=0.1, left=0.2, right=0.94)
     # -- Colorbar placement --
@@ -2691,8 +2695,8 @@ def plot_2panel_optical_contours(
         show_scalebar=False,
         **kwargs
     )
-    l = ax1.legend(handles=handles, labels=labels, loc=legend_loc, fontsize=10, frameon=True)
-    l.set_zorder(20)
+    legend = ax1.legend(handles=handles, labels=labels, loc=legend_loc, fontsize=10, frameon=True)
+    legend.set_zorder(20)
 
     if layout == 'horizontal':
         fig.subplots_adjust(wspace=0.04, left=0.09, right=0.92, top=0.96, bottom=0.09)
@@ -3477,7 +3481,7 @@ def analyze_cluster(
 
     # Create first look at regions using dividing lines
     if verbose:
-        bcg_regions = assign_subcluster_regions(subcluster_configs, plot=True)
+        _ = assign_subcluster_regions(subcluster_configs, plot=True)
 
     # Assign subcluster members based on dividing lines
     region_groups_spec, bisectors   = assign_subcluster_members_multi(subcluster_configs, spec_df)
