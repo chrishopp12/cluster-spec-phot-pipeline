@@ -736,207 +736,6 @@ def make_stats_table(
     return stats_table, stats_values
 
 
-# def make_stats_table(
-#     z_groups,
-#     *,
-#     bins: int = 12,
-#     prefix: str = "subcluster",
-#     make_plots: bool = True,
-#     save_plots: bool = True,
-#     show_plots: bool = True,
-#     save_path=None,
-#     ranges=None,  # optional list of (z_low, z_high) for display only
-# ):
-#     """
-#     Compute normality diagnostics (KS, Anderson-Darling) and produce a LaTeX-ready
-#     stats table for each subcluster using the *actual* z values per subcluster.
-
-#     Parameters
-#     ----------
-#     z_groups : list[array-like]
-#         List where each element is a 1-D array of redshifts for a subcluster.
-#         E.g., the `z_data` returned by `analyze_group`.
-#     bins : int, optional
-#         Number of bins for the diagnostic histogram (default 12).
-#     prefix : str, optional
-#         Filename prefix for saved plots.
-#     make_plots : bool, optional
-#         If True, generate histogram/PDF and ECDF/CDF plots for each subcluster.
-#     save_plots : bool, optional
-#         If True and make_plots is True, save plots with `finalize_figure`.
-#     show_plots : bool, optional
-#         If True and make_plots is True, show plots.
-#     save_path : str or Path-like, optional
-#         Directory to store output images (passed through to `finalize_figure`).
-#     ranges : list[tuple[float,float]] or None, optional
-#         Optional display-only (z_low, z_high) tuples to annotate figure/table.
-#         If not provided, min/max of the data in each subcluster are used.
-
-#     Returns
-#     -------
-#     stats_table : astropy.table.Table
-#         Table with columns:
-#         ["Subcluster", "z_min", "z_max", "Mean", "Std Dev", "KS Stat", "KS p-value", "Anderson Level", "N"]
-#     stats_values : list[dict]
-#         Per-subcluster dict of raw values (useful for downstream code).
-#     """
-#     stats_list = []
-#     stats_values = []
-
-#     # Safety checks on optional ranges
-#     if ranges is not None and len(ranges) != len(z_groups):
-#         raise ValueError("Length of 'ranges' must match length of 'z_groups' or be None.")
-
-#     for i, z_subset in enumerate(z_groups, start=1):
-#         z_subset = np.asarray(z_subset, dtype=float)
-#         N = z_subset.size
-
-#         # Use provided ranges for display, otherwise use data range
-#         if ranges is not None:
-#             z_low, z_high = ranges[i-1]
-#         else:
-#             z_low, z_high = (np.nanmin(z_subset) if N > 0 else np.nan,
-#                              np.nanmax(z_subset) if N > 0 else np.nan)
-
-#         if N == 0:
-#             print(f"Skipping subcluster {i} (no z values provided).")
-#             stats_list.append([i, round(z_low, 3) if np.isfinite(z_low) else np.nan,
-#                                   round(z_high, 3) if np.isfinite(z_high) else np.nan,
-#                                   np.nan, np.nan, np.nan, np.nan, "No data", 0])
-#             stats_values.append(None)
-#             continue
-
-#         # Sample mean/std (unbiased std with ddof=1 is typical; the original used population std)
-#         subset_mean = float(np.mean(z_subset))
-#         subset_std = float(np.std(z_subset, ddof=1)) if N > 1 else 0.0
-
-#         # Guard very small N cases for tests
-#         # - KS needs a distribution; we can still run but for N=1 it's not meaningful
-#         # - Anderson-Darling requires N >= 3 for the usual interpretation
-#         if N >= 2 and subset_std > 0:
-#             # Kolmogorov–Smirnov test against fitted normal
-#             ks_statistic, ks_p_value = scipy.stats.ks_1samp(
-#                 z_subset,
-#                 scipy.stats.norm(loc=subset_mean, scale=subset_std).cdf,
-#                 method='auto'
-#             )
-#         else:
-#             ks_statistic, ks_p_value = np.nan, np.nan
-
-#         if N >= 3:
-#             anderson_res = scipy.stats.anderson(z_subset)  # defaults to 'norm'
-#             ad_stat = anderson_res.statistic
-#             sig_levels = anderson_res.significance_level
-#             crit_values = anderson_res.critical_values
-
-#             # Find the lowest significance level at which normality is rejected
-#             ad_significance = None
-#             for level, crit in zip(sig_levels[::-1], crit_values[::-1]):  # descending
-#                 if ad_stat > crit:
-#                     ad_significance = level
-#                     break
-#             if ad_significance is None:
-#                 ad_significance = "Fail to Reject Normality"
-#         else:
-#             ad_stat, sig_levels, crit_values = np.nan, [], []
-#             ad_significance = "Insufficient N (<3)"
-
-#         # Row for the pretty table
-#         stats_list.append([
-#             i,
-#             round(z_low, 3) if np.isfinite(z_low) else np.nan,
-#             round(z_high, 3) if np.isfinite(z_high) else np.nan,
-#             round(subset_mean, 5),
-#             round(subset_std, 6),
-#             round(ks_statistic, 4) if np.isfinite(ks_statistic) else np.nan,
-#             round(ks_p_value, 4) if np.isfinite(ks_p_value) else np.nan,
-#             ad_significance,
-#             N
-#         ])
-
-#         # Raw values dict (useful for programmatic consumers)
-#         stats_values.append({
-#             "Subcluster": i,
-#             "z_min": z_low,
-#             "z_max": z_high,
-#             "Mean": subset_mean,
-#             "Std Dev": subset_std,
-#             "KS Stat": ks_statistic,
-#             "KS p-value": ks_p_value,
-#             "Anderson Level": ad_significance,
-#             "N": N
-#         })
-
-#         # Console summary (kept from your original)
-#         print("")
-#         print(f"-------------- Stats Summary: Subcluster {i} --------------")
-#         print(f"                   N (count): {N}")
-#         print(f"                     Mean(z): {subset_mean}")
-#         print(f"                Std Dev (z): {subset_std}")
-#         print(f"          KS Test Statistic: {ks_statistic}")
-#         print(f"                 KS p-value: {ks_p_value}")
-#         print(f" Anderson-Darling Statistic: {ad_stat}")
-#         print(f"            Critical Values: {crit_values}")
-#         print(f"        Significance Levels: {sig_levels}")
-#         print("-----------------------------------------------------------")
-#         print("")
-
-#         if make_plots:
-#             fig, axes = plt.subplots(1, 2, figsize=(14, 7))
-
-#             # Histogram & fitted Normal PDF (if std>0 and N>=2)
-#             x_min = np.min(z_subset)
-#             x_max = np.max(z_subset)
-#             x_pdf = np.linspace(x_min, x_max, 200)
-
-#             axes[0].hist(z_subset, bins=bins, density=True, alpha=0.6)
-#             if N >= 2 and subset_std > 0:
-#                 pdf = scipy.stats.norm.pdf(x_pdf, subset_mean, subset_std)
-#                 axes[0].plot(x_pdf, pdf, linestyle='--', label=f'Normal PDF (μ={subset_mean:.5f}, σ={subset_std:.5f})')
-#                 axes[0].legend(loc='upper left')
-
-#             axes[0].set_xlabel('z')
-#             axes[0].xaxis.set_major_locator(MultipleLocator(0.005))
-#             axes[0].xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-#             axes[0].set_ylabel('Density')
-#             title_range = f"({z_low:.3f} < z < {z_high:.3f})" if np.isfinite(z_low) and np.isfinite(z_high) else ""
-#             axes[0].set_title(f'Histogram & PDF\nSubcluster {i} {title_range}')
-
-#             # ECDF vs Normal CDF
-#             x_ecdf = np.sort(z_subset)
-#             y_ecdf = np.arange(1, N + 1) / N
-#             axes[1].plot(x_ecdf, y_ecdf, label='Empirical CDF')
-
-#             if N >= 2 and subset_std > 0:
-#                 cdf = scipy.stats.norm.cdf(x_pdf, subset_mean, subset_std)
-#                 axes[1].plot(x_pdf, cdf, linestyle='--', label='Normal CDF')
-#                 axes[1].legend(loc='upper left')
-
-#             axes[1].set_xlabel('z')
-#             axes[1].xaxis.set_major_locator(MultipleLocator(0.005))
-#             axes[1].xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-#             axes[1].set_ylabel('Cumulative Probability')
-#             axes[1].set_title(f'ECDF vs Normal CDF\nSubcluster {i}')
-
-#             plt.tight_layout()
-#             plt.show()
-
-#             # You already have finalize_figure() in your codebase; we reuse it here.
-#             # If it's not available in this scope, either import it or replace with plt.savefig.
-#             # finalize_figure(
-#             #     fig,
-#             #     save_path=save_path,
-#             #     save_plots=save_plots,
-#             #     show_plots=show_plots,
-#             #     filename=f"{prefix}_{i}_stats.pdf"
-#             # )
-
-#     col_names = ["Subcluster", "z_min", "z_max", "Mean", "Std Dev", "KS Stat", "KS p-value", "Anderson Level", "N"]
-#     stats_table = Table(rows=stats_list, names=col_names)
-#     print(stats_table)
-#     return stats_table, stats_values
-
-
 # -- Build Regions --
 def assign_subcluster_regions(subcluster_configs, margin=0.05, margin_frac=5.0, plot=False, verbose=False):
     """
@@ -3974,255 +3773,48 @@ def parse_subcluster_kwargs(cli_args):
 #     if args.density_bandwidth is not None:
 #         cluster_kwargs["bandwidth"] = args.density_bandwidth
 
-#     # -- Build the Cluster object --
-#     cluster = Cluster(args.cluster_id, **cluster_kwargs)
-#     cluster.populate(verbose=True)
+    # -- Build the Cluster object --
+    cluster = Cluster(args.cluster_id, **cluster_kwargs)
+    cluster.populate(verbose=True)
 
-#     # -- Subcluster dictionary assembly --
-#     # Parse global subcluster options
-#     subcluster_kwargs = {}
+    # -- Subcluster dictionary assembly --
+    # Parse global subcluster options
+    subcluster_kwargs = {}
 
-#     if args.radius is not None:
-#         subcluster_kwargs["radius"] = args.radius
-#     if args.z_range is not None:
-#         subcluster_kwargs["z_range"] = tuple(args.z_range)
-#     if args.colors is not None:
-#         subcluster_kwargs["color"] = args.colors
-#     if args.labels is not None:
-#         subcluster_kwargs["bcg_label"] = args.labels
+    if args.radius is not None:
+        subcluster_kwargs["radius"] = args.radius
+    if args.z_range is not None:
+        subcluster_kwargs["z_range"] = tuple(args.z_range)
+    if args.colors is not None:
+        subcluster_kwargs["color"] = args.colors
+    if args.labels is not None:
+        subcluster_kwargs["bcg_label"] = args.labels
 
-#     # Parse extra subcluster-keyword pairs from unknown or --subcluster-kwargs
-#     extra_kwargs = {}
-#     if args.subcluster_kwargs is not None:
-#         extra_kwargs = parse_subcluster_kwargs(args.subcluster_kwargs)
-#     elif unknown:
-#         extra_kwargs = parse_subcluster_kwargs(unknown)
+    # Parse extra subcluster-keyword pairs from unknown or --subcluster-kwargs
+    extra_kwargs = {}
+    if args.subcluster_kwargs is not None:
+        extra_kwargs = parse_subcluster_kwargs(args.subcluster_kwargs)
+    elif unknown:
+        extra_kwargs = parse_subcluster_kwargs(unknown)
 
-#     # Call builder function
-#     subcluster_configs = build_subclusters(
-#         subclusters=args.subclusters,
-#         cluster=cluster,
-#         **subcluster_kwargs,
-#         **extra_kwargs
-#     )
+    # Call builder function
+    subcluster_configs = build_subclusters(
+        subclusters=args.subclusters,
+        cluster=cluster,
+        **subcluster_kwargs,
+        **extra_kwargs
+    )
 
-#     # -- Call your analysis function, passing configs and cluster --
-#     analyze_cluster(
-#         cluster=cluster,
-#         subcluster_configs=subcluster_configs,
-#         save_plots=args.save_plots,
-#         show_plots=args.show_plots,
-#         plot_alt_regions=args.plot_alt_regions,
-#         run_pipeline=args.run_pipeline
-#     )
+    # -- Call your analysis function, passing configs and cluster --
+    analyze_cluster(
+        cluster=cluster,
+        subcluster_configs=subcluster_configs,
+        save_plots=args.save_plots,
+        show_plots=args.show_plots,
+        plot_alt_regions=args.plot_alt_regions,
+        run_pipeline=args.run_pipeline
+    )
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
 
-
-
-
-
-fov = 6
-ra_offset = 0.0
-dec_offset = 0.0
-legend_loc = 'upper right'
-bandwidth = 0.1
-phot_levels = 10
-phot_skip = 1
-psf=10.0
-
-save_plots = False
-show_plots = True
-run_pipeline = False
-plot_alt_regions = True
-combined_groups = None
-
-
-# cluster_id = "RMJ 0003"
-# cluster_range = (0.36, 0.385)
-# ra_offset = 0.5
-# dec_offset = 0.5
-# levels = (0.5, 0, 12)
-# bandwidth = 0.09
-# subclusters=(1,2,4)
-# combined_groups = [(1,4)]
-# combined_groups = [(2,4)]
-
-# cluster_id = 'RMJ 0109'
-# cluster_range = (0.449, 0.47)
-# levels = (0.5, 0, 12)
-# ra_offset = -0.5
-# dec_offset = -0.5
-# bandwidth = 0.085
-# subclusters = (1, 7, 6)
-# combined_groups = [(7,6)]
-
-# cluster_id = 'RMJ 0219'
-# cluster_range = (0.355, 0.375)
-# levels = (1, 0, 10)
-# fov = 7.5
-# ra_offset = 0.25
-# dec_offset = 0.25
-# subclusters = (1,2)
-
-# cluster_id = 'RMJ 0801'
-# cluster_range = (0.485, 0.52)
-# levels = (0.5, 0, 12)
-# fov_size_deg = 6
-# legend_loc = 'lower right'
-# bandwidth = 0.09
-# manual_list = [(120.426867, 36.45626)]
-# subclusters=(1, 4, 6)
-# # combined_groups = [(1, 4)]
-
-# cluster_id = 'RMJ 0829'
-# cluster_range = (0.38, 0.41)
-# levels = (0.5, 0, 10)
-# fov = 7
-# dec_offset = 0.25
-# ra_offset = -0.25
-# subclusters = (1, 5)
-# # combined_groups =[(5,2)]
-
-# cluster_id = 'RMJ 0926'
-# cluster_range = (0.445, 0.475)
-# levels = (0.25, 0, 12)
-# dec_offset = 0.5
-# legend_loc = 'upper left'
-# bandwidth = 0.055
-# subclusters = (1,4, 3)
-# combined_groups = [(1,4)]
-# subclusters = (1, 4, 3, 5)
-# combined_groups = [(1, 4), (5, 3)]
-
-
-# cluster_id = 'RMJ 1043'
-# cluster_range = (0.420, 0.440)
-# levels = (1.25, 0, 10)
-# dec_offset = -0.5
-# legend_loc = 'upper right'
-# bandwidth = 0.09
-# phot_levels = 14
-# phot_skip = 2
-# subclusters = (2,4,5)
-
-# cluster_id = 'RMJ 1219'
-# cluster_range = (0.535, 0.566)
-# levels = (0.5, 0, 12)
-# ra_offset = -2
-# dec_offset = 0.75
-# bandwidth = 0.1
-# phot_levels = 10
-# phot_skip = 2
-# manual_list = [(184.800825, 50.9097139), (184.756871, 50.9070661)]
-# subclusters = (6,7)
-
-# cluster_id = 'RMJ 1257'
-# cluster_range = (0.52, 0.54)
-# levels = (0.25, 0, 12)
-# ra_offset = -1
-# dec_offset = 0.5
-# bandwidth = 0.08
-# subclusters = (4, 6)
-# manual_list = [(194.341349, 36.9194299)]
-
-
-# cluster_id = 'RMJ 1327'
-# # cluster_range = (0.333, 0.435)
-# cluster_range = (0.38, 0.42)
-# levels = (0.5, 0, 12)
-# dec_offset = 2.5
-# ra_offset = -5
-# # dec_offset = 0/60 
-# # ra_offset = -7/60  
-# fov = 12
-# legend_loc = 'upper left'
-# bandwidth = 0.12
-# phot_levels = 12
-# phot_skip = 1
-# # manual_list = [(201.876469, 53.7954024), (201.734900, 53.8698473), (201.803769, 53.78111109)] #1327 
-# subclusters = (1, 3, 4)
-
-# # lower left
-# dec_offset = 0.5
-# ra_offset = 0
-# fov = 5  
-# levels = (0.5, 0, 12)
-# cluster_range = (0.4, 0.42)
-# # cluster_range_LL = (0.39, 0.42)
-# subclusters = (1, 6)
-
-# # middle
-# dec_offset = 3
-# ra_offset = -5
-# fov = 5  
-# levels = (2, 2, 12)
-# cluster_range = (0.38, 0.4)
-# subclusters = (2,3)
-
-# # upper right
-# dec_offset = 5.5
-# ra_offset = -8
-# fov = 5  
-# levels = (2, 0, 12)
-# cluster_range = (0.38, 0.4)
-# subclusters = (4,7)
-
-# # both right
-# dec_offset = 4.0
-# ra_offset = -6.5
-# fov = 6
-# levels = (2, 0, 12)
-# cluster_range = (0.38, 0.4)
-# subclusters = (3,4)
-
-
-# cluster_id = 'RMJ 1635'
-# cluster_range = (0.465, 0.485)
-# levels = (1.0, 0, 12)
-# bandwidth = 0.08
-# subclusters = (1, 3)
-
-
-# 
-# cluster_id = 'RMJ 2321'
-# cluster_range = (0.48, 0.51)
-# levels = (.25, 0, 12)
-# dec_offset = 1
-# ra_offset = -1
-# legend_loc = 'upper left'
-# bandwidth = 0.085
-# subclusters = (1, 2, 3)
-# combined_groups = [(1, 3)]
-
-
-cluster_id = 'PSZ2G151.19+48.27'
-cluster_range = (0.275, 0.305)
-levels = (.25, 0, 12)
-subclusters = (1, 2)
-
-
-cluster = Cluster(cluster_id, ra_offset=ra_offset, dec_offset=dec_offset, psf=psf, fov=fov, fov_full=30, bandwidth=bandwidth, phot_levels=phot_levels, phot_skip=phot_skip, z_min=cluster_range[0], z_max=cluster_range[1], contour_levels=levels)
-cluster.populate(verbose=True)
-
-
-# if run_pipeline:
-#     run_full_pipeline(cluster, save_plots=save_plots, show_plots=show_plots)
-#     process_redshifts(cluster, save_plots=save_plots, show_plots=show_plots)
-#     make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
-
-
-save_plots = False
-show_plots = True
-subcluster_configs = build_subclusters(cluster=cluster, subclusters=subclusters, combined=combined_groups, radius=2.5)
-analyze_cluster(
-    cluster=cluster,
-    subcluster_configs=subcluster_configs,
-    legend_loc=legend_loc,
-    combined_groups=combined_groups,
-    save_plots=save_plots,
-    show_plots=show_plots,
-    plot_alt_regions=plot_alt_regions,
-    run_pipeline=run_pipeline
-)
