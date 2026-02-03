@@ -256,7 +256,7 @@ def _normalize_config_dict(config: dict[str, Any]) -> dict[str, Any]:
     -----------
     config : dict[str, Any]
         Input subcluster config dict.
-        
+
     Returns:
     --------
     dict[str, Any]
@@ -351,8 +351,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--z-max", type=float, default=None, help="Maximum redshift for analysis.")
     parser.add_argument("--fov", type=float, default=None, help="Zoomed field of view in arcmin.")
     parser.add_argument("--fov-full", type=float, default=None, help="Full field of view in arcmin.")
-    parser.add_argument("--ra-offset", type=float, default=None, help="RA offset in arcmin.")
-    parser.add_argument("--dec-offset", type=float, default=None, help="Dec offset in arcmin.")
+    parser.add_argument("--ra-offset", type=float, default=None, help="RA offset in arcmin (Positive looks to the right).")
+    parser.add_argument("--dec-offset", type=float, default=None, help="Dec offset in arcmin (Positive looks up).")
 
     # -- Global subcluster options --
     parser.add_argument("--radius", type=float, default=None, help="Default search radius for all subclusters (Mpc).")
