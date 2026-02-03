@@ -410,13 +410,13 @@ def main():
         "--ra-offset",
         type=float,
         default=None,
-        help="RA offset in arcmin."
+        help="RA offset in arcmin (Positive looks to the right)."
     )
     parser.add_argument(
         "--dec-offset",
         type=float,
         default=None,
-        help="Dec offset in arcmin."
+        help="Dec offset in arcmin (Positive looks up)."
     )
     parser.add_argument(
         "--density-levels",
