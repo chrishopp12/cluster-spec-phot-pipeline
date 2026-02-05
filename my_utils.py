@@ -479,8 +479,6 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
         simbad_result = custom_simbad.query_object(simbad_name)
 
         if simbad_result is not None:
-            print("Simbad result:", simbad_result)
-
             # Check lowercase 'rvz_redshift'
             if 'rvz_redshift' in simbad_result.colnames:
                 z = simbad_result['rvz_redshift'][0]
