@@ -52,7 +52,6 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 
 from astroquery.ipac.ned import Ned
-from astroquery.ipac.ned import Conf as NedConf
 from astroquery.utils.tap.core import TapPlus
 
 from cluster import Cluster
@@ -107,7 +106,7 @@ def query_ned(
     # TODO: Get references, ned_table = Ned.get_table(name, table='references'), but you get
     # multiple entries per query and would need to query each galaxy. 
 
-    NedConf.timeout = timeout
+    Ned.TIMEOUT = timeout
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Querying NED (attempt {attempt}/{max_retries}) for RA={coord.ra.deg}, Dec={coord.dec.deg}...")
