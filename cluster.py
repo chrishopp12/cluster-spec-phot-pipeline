@@ -461,13 +461,22 @@ class Cluster:
         """Fill remaining fields by querying external sources."""
 
         # Name/Coords
-        if _is_missing(self.ra) or _is_missing(self.dec) or _is_missing(self.name):
-            self.name = self.name or get_name(self.identifier)
-            coords = get_coordinates(self.identifier)
-            self.ra, self.dec = float(coords.ra.deg), float(coords.dec.deg)
-            self._coords = coords
-            if verbose:
-                print(f"  [fetch] name/coords: {self.name}, {self.ra}, {self.dec}")
+        if _is_missing(self.name):
+            try:
+                self.name = get_name(self.identifier)
+            except Exception:
+                pass # Name not required, will use coords
+
+        if _is_missing(self.ra) or _is_missing(self.dec):
+            try:
+                coords = get_coordinates(self.identifier)
+                self.ra, self.dec = coords.ra.deg, coords.dec.deg
+            except Exception:
+                pass # Coordinates may be available elsewhere
+        if not _is_missing(self.ra) and not _is_missing(self.dec):
+                self.coords = SkyCoord(self.ra, self.dec, unit='deg', frame='icrs')
+                if verbose:
+                    print(f"  [fetch] name/coords: {self.name}, {self.ra}, {self.dec}")
         else:
             self._coords = SkyCoord(ra=float(self.ra) * u.deg, dec=float(self.dec) * u.deg)
 
