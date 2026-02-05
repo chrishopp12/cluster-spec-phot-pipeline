@@ -61,7 +61,7 @@ from cluster import Cluster
 # Defaults/ Constants
 # ------------------------------------
 DEFAULT_RADIUS_ARCMIN = 10.0
-DEFAULT_TOLERANCE_DEG = 1.0 / 3600.0  # 1 arcsec
+DEFAULT_TOLERANCE_DEG = 2.0 / 3600.0  # 2 arcsec
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_INITIAL_WAIT = 5  # seconds
 DEFAULT_TIMEOUT = 300  # seconds
