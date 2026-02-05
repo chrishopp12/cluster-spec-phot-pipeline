@@ -116,8 +116,16 @@ def query_ned(
                 return pd.DataFrame(columns=DF_COLUMNS)
     
             filtered = result[result['Redshift Flag'] == 'SLS'].copy()
+
+            # Enforce galaxies only
+            if "Type" in filtered.colnames:
+                filtered = filtered[filtered["Type"] == "G"].copy()
+            else:
+                # If the column isn't present, we can't enforce galaxy-only safely
+                print("Warning: NED result has no 'Type' column; cannot filter stars reliably.")
+
             if len(filtered) == 0:
-                print("NED query returned no SLS-type redshifts.")
+                print("NED query returned no galaxy (Type='G') SLS redshifts.")
                 return pd.DataFrame(columns=DF_COLUMNS)
             
             ra = pd.to_numeric(filtered['RA'], errors='coerce')
@@ -224,6 +232,7 @@ def query_sdss(
     WHERE {ra_clause}
     AND s.dec BETWEEN {dec_min} AND {dec_max}
     AND s.z IS NOT NULL
+    AND s.class = 'GALAXY'
     """
 
     url = SDSS_URL
