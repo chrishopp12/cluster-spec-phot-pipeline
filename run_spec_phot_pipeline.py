@@ -87,8 +87,6 @@ import argparse
 from getpass import getpass
 import json
 
-import numpy as np
-
 from spec_phot_pipeline.archival_z_pipeline import run_redshift_pipeline
 from spec_phot_pipeline.archival_phot_pipeline import run_photometry_pipeline
 from spec_phot_pipeline.make_catalogs_pipeline import build_redshift_catalog
@@ -101,7 +99,6 @@ from cluster import Cluster
 # ------------------------------------
 # Defaults/ Constants
 # ------------------------------------
-DEFAULT_Z_PAD = 0.015
 
 # ------------------------------------
 # Helpers
@@ -135,37 +132,6 @@ def _resolve_casjobs_credentials(
         resolved_pw = getpass("CasJobs password: ")
 
     return resolved_user, resolved_pw
-
-
-def _resolve_z_range(
-    cluster: Cluster,
-    z_min: float | None,
-    z_max: float | None,
-) -> tuple[float, float]:
-    """Choose the redshift bounds to use for downstream selection and plots.
-    
-    Parameters
-    ----------
-    cluster : Cluster
-        Cluster object.
-    z_min : float | None
-        Minimum redshift from CLI arg or None.
-    z_max : float | None
-        Maximum redshift from CLI arg or None.
-    """
-    if z_min is not None:
-        cluster.z_min = float(z_min)
-    if z_max is not None:
-        cluster.z_max = float(z_max)
-
-    # Prefer already-populated values on the Cluster object.
-    if cluster.z_min is None or (isinstance(cluster.z_min, float) and np.isnan(cluster.z_min)):
-        cluster.z_min = float(cluster.redshift) - DEFAULT_Z_PAD
-
-    if cluster.z_max is None or (isinstance(cluster.z_max, float) and np.isnan(cluster.z_max)):
-        cluster.z_max = float(cluster.redshift) + DEFAULT_Z_PAD
-
-    return float(cluster.z_min), float(cluster.z_max)
 
 
 def _parse_json_kwargs(
@@ -282,7 +248,7 @@ def run_full_pipeline(
     if manual_list and "manual_list" in catalog_kwargs:
         raise ValueError("Provide manual BCGs via either --bcg or --catalog-kwargs, not both.")
     
-    z_min_resolved, z_max_resolved = _resolve_z_range(cluster, z_min, z_max)
+    z_min_resolved, z_max_resolved = cluster.resolve_z_range(z_min=z_min, z_max=z_max)
     print(f"Using zmin = {z_min_resolved}, zmax = {z_max_resolved}")
 
     # Step 1: Redshifts
