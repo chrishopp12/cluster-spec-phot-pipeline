@@ -28,9 +28,11 @@ import re
 import csv
 
 import pandas as pd
+import numpy as np
 
 from pathlib import Path
 from typing import Any
+from numbers import Real
 from astropy.coordinates import SkyCoord, Angle
 import astropy.units as u
 
@@ -115,6 +117,8 @@ class Cluster:
     DEFAULT_CONTOUR_LEVELS = "0.5,0,12"
     DEFAULT_PSF = 8.0 
     DEFAULT_BANDWIDTH = 0.1
+
+    DEFAULT_Z_PAD = 0.15
 
     CSV_COLUMNS = (
         'identifier',
@@ -275,6 +279,55 @@ class Cluster:
             self._coords = None
             self._init_paths()
             self._update_csv()
+
+
+    def resolve_z_range(
+        self,
+        *,
+        z_min: float | None = None,
+        z_max: float | None = None,
+    ) -> tuple[float, float]:
+        """Choose the redshift bounds to use for downstream selection and plots.
+        
+        Parameters
+        ----------
+        z_min : float | None
+            Minimum redshift from CLI arg or None.
+        z_max : float | None
+            Maximum redshift from CLI arg or None.
+
+        Returns
+        -------
+        tuple[float, float]
+            (z_min, z_max) to use for this cluster
+        """
+        def _is_valid_z(val: Any) -> bool:
+            return isinstance(val, Real) and not np.isnan(val)
+        
+        zmin = getattr(self, 'z_min', None)
+        zmax = getattr(self, 'z_max', None)
+
+        # Apply CLI overrides first
+        if z_min is not None:
+            zmin = float(z_min)
+        if z_max is not None:
+            zmax = float(z_max)
+
+        # Fill missing values with padded redshift if possible
+        if not _is_valid_z(zmin) or not _is_valid_z(zmax):
+            cluster_z = getattr(self, 'redshift', None)
+            if not _is_valid_z(cluster_z):
+                raise ValueError("Cannot resolve z-range: cluster.redshift is missing or invalid, and z_min/z_max not provided.")
+            cluster_z = float(cluster_z)
+            if not _is_valid_z(zmin):
+                zmin = cluster_z - self.DEFAULT_Z_PAD
+            if not _is_valid_z(zmax):
+                zmax = cluster_z + self.DEFAULT_Z_PAD
+
+        self.z_min = float(zmin)
+        self.z_max = float(zmax)
+
+        return float(self.z_min), float(self.z_max)
 
 
     def get_phot_file(
@@ -461,15 +514,26 @@ class Cluster:
         """Fill remaining fields by querying external sources."""
 
         # Name/Coords
-        if _is_missing(self.ra) or _is_missing(self.dec) or _is_missing(self.name):
-            self.name = self.name or get_name(self.identifier)
-            coords = get_coordinates(self.identifier)
-            self.ra, self.dec = float(coords.ra.deg), float(coords.dec.deg)
-            self._coords = coords
+        if _is_missing(self.name):
+            try:
+                self.name = get_name(self.identifier)
+            except Exception:
+                pass # Name not required, will use coords
+
+        if _is_missing(self.ra) or _is_missing(self.dec):
+            try:
+                coords = get_coordinates(self.identifier)
+                self.ra, self.dec = float(coords.ra.deg), float(coords.dec.deg)
+            except Exception:
+                pass # Coordinates may be available elsewhere
+        if not _is_missing(self.ra) and not _is_missing(self.dec):
+            self._coords = SkyCoord(float(self.ra)*u.deg, float(self.dec)*u.deg)
             if verbose:
                 print(f"  [fetch] name/coords: {self.name}, {self.ra}, {self.dec}")
         else:
-            self._coords = SkyCoord(ra=float(self.ra) * u.deg, dec=float(self.dec) * u.deg)
+            self._coords = None
+            if verbose:
+                print(f"  [fetch] name/coords not found for {self.identifier}")
 
         # Redshift/Richness (prefer candidate_mergers.csv)
         needs_z = _is_missing(self.redshift)

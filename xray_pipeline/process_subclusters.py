@@ -156,8 +156,8 @@ def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
         if zr is not None:
             return zr
         # Cluster default (tuple of min/max)
-        if cluster is not None and hasattr(cluster, "z_min") and hasattr(cluster, "z_max"):
-            return (cluster.z_min, cluster.z_max)
+        if cluster is not None:
+            return cluster.resolve_z_range()
         raise ValueError(f"Must specify z_range for subcluster {bcg_id} (index {i+1}).")
 
     def _kw_override(key, i, bcg_id, default=None):
