@@ -51,6 +51,12 @@ Provide CasJobs credentials via CLI or environment variables:
     export CASJOBS_PW="..."
     python run_cmd_pipeline.py 1327
 
+Cluster identification:
+    CLUSTER_ID can be a simple ID (e.g. '1327') which maps to a user-provided map, a full name resolvable by Ned/ Simbad, or a custom identifier. If a custome identifer is used, RA, Dec, and redshift must be provided via command-line options, cluster_csv, or the Cluster object must be manually populated.
+
+    CLUSTER_ID          <str>     Cluster ID (e.g. '1327') or full RMJ/Abell name.
+    --radec            <float>    Cluster center coordinates as RA DEC in degrees.
+    --redshift         <float>    Cluster redshift (overrides catalog value).
 
 Options:
     --zmin             <float>   Minimum redshift for analysis. [default: z - 0.015]
@@ -337,6 +343,20 @@ def main():
         help="Cluster ID (e.g. '1327') or full RMJ/Abell name."
     )
     parser.add_argument(
+        "--radec",
+        nargs=2,
+        type=float,
+        metavar=("RA_DEG", "DEC_DEG"),
+        default=None,
+        help="Cluster center coordinates as RA DEC in degrees."
+    )
+    parser.add_argument(
+        "--redshift",
+        type=float,
+        default=None,
+        help="Cluster redshift (overrides catalog value)."
+    )
+    parser.add_argument(
         "--zmin",
         type=float,
         default=None,
@@ -523,9 +543,18 @@ def main():
     cmd_kwargs = _parse_json_kwargs(args.cmd_kwargs, "--cmd-kwargs")
     plotting_kwargs = _parse_json_kwargs(args.plotting_kwargs, "--plotting-kwargs")
 
+    if args.radec:
+        ra_deg, dec_deg = args.radec
+        cluster_kwargs["ra"] = ra_deg
+        cluster_kwargs["dec"] = dec_deg
+    if args.redshift is not None:
+        cluster_kwargs["redshift"] = args.redshift
+
 
     cluster = Cluster(args.cluster_id, **cluster_kwargs)
-    cluster.populate()
+    cluster.populate(verbose=True)
+
+
 
     run_full_pipeline(
         cluster,
