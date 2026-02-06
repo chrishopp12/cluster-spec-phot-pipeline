@@ -470,15 +470,17 @@ class Cluster:
         if _is_missing(self.ra) or _is_missing(self.dec):
             try:
                 coords = get_coordinates(self.identifier)
-                self.ra, self.dec = coords.ra.deg, coords.dec.deg
+                self.ra, self.dec = float(coords.ra.deg), float(coords.dec.deg)
             except Exception:
                 pass # Coordinates may be available elsewhere
         if not _is_missing(self.ra) and not _is_missing(self.dec):
-                self.coords = SkyCoord(self.ra, self.dec, unit='deg', frame='icrs')
-                if verbose:
-                    print(f"  [fetch] name/coords: {self.name}, {self.ra}, {self.dec}")
+            self._coords = SkyCoord(float(self.ra)*u.deg, float(self.dec)*u.deg)
+            if verbose:
+                print(f"  [fetch] name/coords: {self.name}, {self.ra}, {self.dec}")
         else:
-            self._coords = SkyCoord(ra=float(self.ra) * u.deg, dec=float(self.dec) * u.deg)
+            self._coords = None
+            if verbose:
+                print(f"  [fetch] name/coords not found for {self.identifier}")
 
         # Redshift/Richness (prefer candidate_mergers.csv)
         needs_z = _is_missing(self.redshift)
