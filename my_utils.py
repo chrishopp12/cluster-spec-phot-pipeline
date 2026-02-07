@@ -732,6 +732,59 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
     raise ValueError(f"Could not find redshift for {cluster_name} in Simbad, NED, or BCG data.")
 
 
+def make_skycoord(
+    ra_deg: np.ndarray | list[float],
+    dec_deg: np.ndarray | list[float],
+) -> SkyCoord:
+    """
+    Create an ICRS SkyCoord from RA/Dec in degrees.
+
+    Parameters
+    ----------
+    ra_deg : np.ndarray or list of float
+        Right Ascension values in degrees.
+    dec_deg : np.ndarray or list of float
+        Declination values in degrees.
+
+    Returns
+    -------
+    SkyCoord
+        SkyCoord object with the provided RA and Dec in the ICRS frame.
+    """
+    return SkyCoord(
+        ra=np.asarray(ra_deg, dtype=float) * u.deg,
+        dec=np.asarray(dec_deg, dtype=float) * u.deg,
+        frame="icrs",
+    )
+
+def skycoord_from_df(
+    df: pd.DataFrame,
+    *,
+    ra_col: str = "RA",
+    dec_col: str = "Dec",
+) -> SkyCoord:
+    """
+    Create SkyCoord from a DataFrame with RA/Dec columns (degrees).
+    
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing RA and Dec columns.
+    ra_col : str
+        Name of the RA column (default: "RA").
+    dec_col : str
+        Name of the Dec column (default: "Dec").
+
+    Returns
+    -------
+    SkyCoord
+        SkyCoord object with coordinates from the specified DataFrame columns.
+    """
+    if ra_col not in df.columns or dec_col not in df.columns:
+        raise KeyError(f"DataFrame must contain '{ra_col}' and '{dec_col}' columns.")
+    return make_skycoord(df[ra_col].values, df[dec_col].values)
+
+
 # ------------------------------------
 # File Loading Utilities
 # ------------------------------------
@@ -2260,6 +2313,8 @@ def get_skycoord(df: pd.DataFrame) -> SkyCoord:
     coords : SkyCoord
         SkyCoord object with the coordinates from the DataFrame.
     """
+
+    # TODO: This function can be deleted and switched to skycoord_from_df() for consistency, but keeping it for now since it's used in some places and is more concise.    
     return SkyCoord(ra=df["RA"].values * u.deg, dec=df["Dec"].values * u.deg)
 
 
@@ -2343,120 +2398,120 @@ def split_members_by_spec(
     return spec_members, phot_members
 
 
-def query_redmapper_bcg_candidates(
-    coord: SkyCoord,
-    *,
-    radius_arcmin: float = 5.0,
-    verbose: bool = True,
-) -> list[tuple[float, float, float | None, float | None]]:
-    """
-    Query redMaPPer via VizieR near a given coordinate and return up to 5 BCG-center candidates.
+# def query_redmapper_bcg_candidates(
+#     coord: SkyCoord,
+#     *,
+#     radius_arcmin: float = 5.0,
+#     verbose: bool = True,
+# ) -> list[tuple[float, float, float | None, float | None]]:
+#     """
+#     Query redMaPPer via VizieR near a given coordinate and return up to 5 BCG-center candidates.
 
-    Notes
-    -----
-    - This is a *positional* query (no name matching).
-    - If multiple clusters are returned, we select the closest on-sky.
-      (In practice, this is almost always fine for small radii.)
+#     Notes
+#     -----
+#     - This is a *positional* query (no name matching).
+#     - If multiple clusters are returned, we select the closest on-sky.
+#       (In practice, this is almost always fine for small radii.)
 
-    Parameters
-    ----------
-    coord : SkyCoord
-        Target coordinate (typically the cluster center).
-    radius_arcmin : float
-        Search radius around `coord`.
-    verbose : bool
-        Print basic diagnostics.
+#     Parameters
+#     ----------
+#     coord : SkyCoord
+#         Target coordinate (typically the cluster center).
+#     radius_arcmin : float
+#         Search radius around `coord`.
+#     verbose : bool
+#         Print basic diagnostics.
 
-    Returns
-    -------
-    list of tuple
-        Candidate list in (RA, Dec, z, P) format. z is None here; downstream
-        matching to your spectroscopic catalog can fill it in.
-    """
-    if coord is None:
-        return []
+#     Returns
+#     -------
+#     list of tuple
+#         Candidate list in (RA, Dec, z, P) format. z is None here; downstream
+#         matching to your spectroscopic catalog can fill it in.
+#     """
+#     if coord is None:
+#         return []
 
-    # TODO: Add support for DES redMaPPer catalog
-    # VizieR redMaPPer SDSS DR8 cluster catalog.
-    catalog = "J/ApJS/224/1/cat_dr8"
+#     # TODO: Add support for DES redMaPPer catalog
+#     # VizieR redMaPPer SDSS DR8 cluster catalog.
+#     catalog = "J/ApJS/224/1/cat_dr8"
 
-    # Column names in this catalog (VizieR-style):
-    # - RAJ2000, DEJ2000 for cluster center
-    # - PCen0..PCen4 and RA0deg/DE0deg..RA4deg/DE4deg for centering candidates
-    cols = [
-        "Name", "RAJ2000", "DEJ2000",
-        "PCen0", "PCen1", "PCen2", "PCen3", "PCen4",
-        "RA0deg", "DE0deg", "RA1deg", "DE1deg", "RA2deg", "DE2deg", "RA3deg", "DE3deg", "RA4deg", "DE4deg",
-    ]
+#     # Column names in this catalog (VizieR-style):
+#     # - RAJ2000, DEJ2000 for cluster center
+#     # - PCen0..PCen4 and RA0deg/DE0deg..RA4deg/DE4deg for centering candidates
+#     cols = [
+#         "Name", "RAJ2000", "DEJ2000",
+#         "PCen0", "PCen1", "PCen2", "PCen3", "PCen4",
+#         "RA0deg", "DE0deg", "RA1deg", "DE1deg", "RA2deg", "DE2deg", "RA3deg", "DE3deg", "RA4deg", "DE4deg",
+#     ]
 
-    viz = Vizier(columns=cols)
-    viz.ROW_LIMIT = 50
+#     viz = Vizier(columns=cols)
+#     viz.ROW_LIMIT = 50
 
-    try:
-        tabs = viz.query_region(coord, radius=radius_arcmin * u.arcmin, catalog=catalog)
-    except Exception as e:
-        if verbose:
-            print(f"redMaPPer VizieR query failed: {e}")
-        return []
+#     try:
+#         tabs = viz.query_region(coord, radius=radius_arcmin * u.arcmin, catalog=catalog)
+#     except Exception as e:
+#         if verbose:
+#             print(f"redMaPPer VizieR query failed: {e}")
+#         return []
 
-    if not tabs or len(tabs[0]) == 0:
-        if verbose:
-            print("No redMaPPer clusters found in search radius.")
-        return []
+#     if not tabs or len(tabs[0]) == 0:
+#         if verbose:
+#             print("No redMaPPer clusters found in search radius.")
+#         return []
 
-    t = tabs[0]
+#     t = tabs[0]
 
-    # Choose the closest cluster (safe default; avoids a “richest vs closest” knob)
-    cl_coords = SkyCoord(t["RAJ2000"], t["DEJ2000"], unit=(u.deg, u.deg), frame="icrs")
+#     # Choose the closest cluster (safe default; avoids a “richest vs closest” knob)
+#     cl_coords = SkyCoord(t["RAJ2000"], t["DEJ2000"], unit=(u.deg, u.deg), frame="icrs")
 
-    idx = int(coord.separation(cl_coords).argmin())
-    row = t[idx]
+#     idx = int(coord.separation(cl_coords).argmin())
+#     row = t[idx]
 
-    if verbose:
-        sep = coord.separation(cl_coords[idx]).to(u.arcmin).value
-        name = str(row["Name"]) if "Name" in row.colnames else "unknown"
-        print(f"redMaPPer match: {name} (sep={sep:.2f} arcmin). Extracting PCen/RAi/DEi candidates...")
+#     if verbose:
+#         sep = coord.separation(cl_coords[idx]).to(u.arcmin).value
+#         name = str(row["Name"]) if "Name" in row.colnames else "unknown"
+#         print(f"redMaPPer match: {name} (sep={sep:.2f} arcmin). Extracting PCen/RAi/DEi candidates...")
 
-    cands: list[tuple[float, float, float | None, float | None]] = []
+#     cands: list[tuple[float, float, float | None, float | None]] = []
 
-    for i in range(5):
-        ra_key = f"RA{i}deg"
-        de_key = f"DE{i}deg"
-        p_key = f"PCen{i}"
+#     for i in range(5):
+#         ra_key = f"RA{i}deg"
+#         de_key = f"DE{i}deg"
+#         p_key = f"PCen{i}"
 
-        if ra_key not in row.colnames or de_key not in row.colnames:
-            continue
+#         if ra_key not in row.colnames or de_key not in row.colnames:
+#             continue
 
-        ra_i = row[ra_key]
-        de_i = row[de_key]
-        p_i = row[p_key] if p_key in row.colnames else np.nan
+#         ra_i = row[ra_key]
+#         de_i = row[de_key]
+#         p_i = row[p_key] if p_key in row.colnames else np.nan
 
-        # Guard against masked/NaN
-        if ra_i is None or de_i is None:
-            continue
+#         # Guard against masked/NaN
+#         if ra_i is None or de_i is None:
+#             continue
 
-        try:
-            ra_f = float(ra_i)
-            de_f = float(de_i)
-        except Exception:
-            continue
+#         try:
+#             ra_f = float(ra_i)
+#             de_f = float(de_i)
+#         except Exception:
+#             continue
 
-        if not np.isfinite(ra_f) or not np.isfinite(de_f):
-            continue
+#         if not np.isfinite(ra_f) or not np.isfinite(de_f):
+#             continue
 
-        p_f = None
-        try:
-            p_tmp = float(p_i)
-            p_f = p_tmp if np.isfinite(p_tmp) else None
-        except Exception:
-            p_f = None
+#         p_f = None
+#         try:
+#             p_tmp = float(p_i)
+#             p_f = p_tmp if np.isfinite(p_tmp) else None
+#         except Exception:
+#             p_f = None
 
-        cands.append((ra_f, de_f, None, p_f))
+#         cands.append((ra_f, de_f, None, p_f))
 
-    # Sort by probability (descending), with None at the end
-    cands.sort(key=lambda t: (-1.0 if t[3] is None else -t[3]))
+#     # Sort by probability (descending), with None at the end
+#     cands.sort(key=lambda t: (-1.0 if t[3] is None else -t[3]))
 
-    if verbose and cands:
-        print(f"Recovered {len(cands)} redMaPPer BCG candidates.")
+#     if verbose and cands:
+#         print(f"Recovered {len(cands)} redMaPPer BCG candidates.")
 
-    return cands
+#     return cands
