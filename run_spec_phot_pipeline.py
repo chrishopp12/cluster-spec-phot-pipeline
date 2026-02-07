@@ -554,14 +554,15 @@ def main():
     cluster = Cluster(args.cluster_id, **cluster_kwargs)
     cluster.populate(verbose=True)
 
-
+    user = args.casjobs_user or os.environ.get("CASJOBS_USER") or input("CasJobs username: ")
+    password = args.casjobs_password or os.environ.get("CASJOBS_PW") or getpass("CasJobs password: ")
 
     run_full_pipeline(
         cluster,
         z_min=args.zmin,
         z_max=args.zmax,
-        casjobs_user=args.casjobs_user,
-        casjobs_password=args.casjobs_password,
+        casjobs_user=user,
+        casjobs_password=password,
         manual_list=manual_list,
         show_plots=args.show_plots,
         save_plots=args.save_plots,
