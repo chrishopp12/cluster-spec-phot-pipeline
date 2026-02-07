@@ -257,7 +257,7 @@ def query_redmapper(
 
     if coord is None:
         print("No coordinate provided for redMaPPer query.")
-        return []
+        return None
     
     # TODO: Add support for DES redMaPPer catalog
     # VizieR SVA 1
