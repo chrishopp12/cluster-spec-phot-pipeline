@@ -224,6 +224,194 @@ def read_json(path: Path) -> dict[str, Any]:
     return data
 
 
+def query_redmapper(
+    coord: SkyCoord,
+    *,
+    radius_arcmin: float = 5.0,
+    verbose: bool = True,
+):
+    """
+    Query redMaPPer via VizieR near a coordinate and return results for the closest cluster.
+
+    Notes
+    -----
+    - This is a *positional* query (no name matching).
+    - If multiple clusters are returned, we select the closest on-sky.
+      (In practice, this is almost always fine for small radii.)
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Target coordinate (typically the cluster center).
+    radius_arcmin : float
+        Search radius around `coord` in arcminutes.
+    verbose : bool
+        Print minimal diagnostics.
+
+    Returns
+    -------
+
+    """
+
+    # TODO: Allow name search
+
+    if coord is None:
+        print("No coordinate provided for redMaPPer query.")
+        return []
+    
+    # TODO: Add support for DES redMaPPer catalog
+    # VizieR SVA 1
+    # catalog = "J/ApJS/224/1/cat_sva1"
+
+    catalog = "J/ApJS/224/1/cat_dr8"
+
+    cols = [
+        "Name", "RAJ2000", "DEJ2000",
+        "PCen0", "PCen1", "PCen2", "PCen3", "PCen4",
+        "RA0deg", "DE0deg", "RA1deg", "DE1deg", "RA2deg", "DE2deg", "RA3deg", "DE3deg", "RA4deg", "DE4deg",
+        "zlambda", "e_zlambda", "lambda", "e_lambda",
+    ]
+
+    viz = Vizier(columns=cols, row_limit=50)
+
+    try:
+        tabs = viz.query_region(coord, radius=radius_arcmin * u.arcmin, catalog=catalog)
+    except Exception as e:
+        if verbose:
+            print(f"redMaPPer VizieR query failed: {e}")
+        return None
+
+    if not tabs or len(tabs[0]) == 0:
+        if verbose:
+            print("No redMaPPer clusters found in search radius.")
+        return None
+
+    t = tabs[0]
+
+    # Choose the closest cluster by its center position.
+    cl_coords = SkyCoord(t["RAJ2000"], t["DEJ2000"], unit=(u.deg, u.deg), frame="icrs")
+    idx = int(coord.separation(cl_coords).argmin())
+    redmapper_results = t[idx]
+
+    if verbose:
+        name = str(redmapper_results["Name"])
+        sep_arcmin = float(coord.separation(cl_coords[idx]).to(u.arcmin).value)
+        print(f"Found redMaPPer cluster '{name}' at separation {sep_arcmin:.2f} arcmin.")
+
+    return redmapper_results
+
+
+def get_redmapper_bcg_candidates(
+    coord: SkyCoord,
+    *,
+    radius_arcmin: float = 5.0,
+    verbose: bool = True,
+) -> list[tuple[float, float, None, float | None]]:
+    """
+    Query redMaPPer via VizieR near a coordinate and return the closest cluster's 5 BCG candidates.
+
+    Notes
+    -----
+    - This is a *positional* query (no name matching).
+    - If multiple clusters are returned, we select the closest on-sky.
+      (In practice, this is almost always fine for small radii.)
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Target coordinate (typically the cluster center).
+    radius_arcmin : float
+        Search radius around `coord` in arcminutes.
+    verbose : bool
+        Print minimal diagnostics.
+
+    Returns
+    -------
+    bcgs : list of (RA_deg, Dec_deg, z=None, Pcen) tuples
+         List of the 5 BCG candidates from the closest redMaPPer cluster,
+         with their RA, Dec, and Pcen values.
+    """
+
+    if coord is None:
+        print("No coordinate provided for redMaPPer query.")
+        return []
+    
+
+    redmapper_results = query_redmapper(coord, radius_arcmin=radius_arcmin, verbose=verbose)
+    if redmapper_results is None:
+        print("No redMaPPer cluster found; cannot get BCG candidates.")
+        return []
+
+
+    bcgs: list[tuple[float, float, None, float | None]] = []
+    for i in range(5):
+        ra = to_float_or_none(redmapper_results[f"RA{i}deg"])
+        dec = to_float_or_none(redmapper_results[f"DE{i}deg"])
+        p = to_float_or_none(redmapper_results.get(f"PCen{i}"))
+
+        bcgs.append((ra, dec, None, p))
+
+    return bcgs
+
+
+def get_redmapper_cluster_info(
+    coord: SkyCoord,
+    *,
+    radius_arcmin: float = 5.0,
+    verbose: bool = True,
+) -> list[tuple[float, float, None, float | None]]:
+    """
+    Query redMaPPer via VizieR near a coordinate and return the closest cluster's info.
+
+    Notes
+    -----
+    - This is a *positional* query (no name matching).
+    - If multiple clusters are returned, we select the closest on-sky.
+      (In practice, this is almost always fine for small radii.)
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Target coordinate (typically the cluster center).
+    radius_arcmin : float
+        Search radius around `coord` in arcminutes.
+    verbose : bool
+        Print minimal diagnostics.
+
+    Returns
+    -------
+    cluster_info : dict with keys:
+        - name: Cluster name (str)
+        - zlambda: Cluster redshift (float or None)
+        - e_zlambda: Uncertainty on zlambda (float or None)
+        - lambda: Cluster richness (float or None)
+        - e_lambda: Uncertainty on richness (float or None)
+    """
+    redmapper_results = query_redmapper(coord, radius_arcmin=radius_arcmin, verbose=verbose)
+
+    if redmapper_results is None:
+        print("No redMaPPer cluster found; cannot get BCG candidates.")
+        return {
+            "name": None,
+            "zlambda": None,
+            "e_zlambda": None,
+            "lambda": None,
+            "e_lambda": None,
+        }
+
+   
+    cluster_info = {
+        "name":  str(redmapper_results["Name"]),
+        "zlambda": to_float_or_none(redmapper_results["zlambda"]),
+        "e_zlambda": to_float_or_none(redmapper_results["e_zlambda"]),
+        "lambda": to_float_or_none(redmapper_results["lambda"]),
+        "e_lambda": to_float_or_none(redmapper_results["e_lambda"]),
+    }
+
+    return cluster_info
+
+
+
 # ------------------------------------
 # Cluster Name and Coordinate Utilities
 # ------------------------------------
@@ -736,11 +924,12 @@ def read_bcg_csv(
 
     return df
 
+
 def select_bcgs(
     bcg_df: pd.DataFrame,
     *,
     bcg_id: int | None = None,
-    seeds_only: bool = False,
+    rm_only: bool = False,
 ) -> pd.DataFrame:
     """
     Select BCG rows from a full BCG DataFrame.
@@ -751,7 +940,7 @@ def select_bcgs(
         Full BCG DataFrame, as returned by `read_bcg_csv()`.
     bcg_id : int or None
         If specified, select only the row with this BCG ID.
-    seeds_only : bool
+    rm_only : bool
         If True, select only rows with BCG_priority 1-5 (inclusive).
 
     Returns
@@ -765,7 +954,7 @@ def select_bcgs(
     out = bcg_df.copy()
 
     if "BCG_priority" in out.columns:
-        if seeds_only:
+        if rm_only:
             out = out[(out["BCG_priority"] >= 1) & (out["BCG_priority"] <= 5)]
         if bcg_id is not None:
             out = out[out["BCG_priority"] == int(bcg_id)]
@@ -783,7 +972,7 @@ def bcg_basic_info(
     ----------
     bcg_df : pd.DataFrame
         BCG DataFrame with at least 'RA' and 'Dec' columns.
-        
+
     Returns
     -------
     list of tuples
