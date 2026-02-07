@@ -880,8 +880,8 @@ def load_photo_coords(
         Declination values in degrees.
     """
     df = pd.read_csv(csv_file)
-    # df_clean = df[(df[mag_col]) > 0]
-    df_clean = df[(df["on_red_sequence"])]
+    df_clean = df[(df[mag_col]) > 0]
+    # df_clean = df[(df["on_red_sequence"])]
 
     return df_clean[ra_col].values, df_clean[dec_col].values, df_clean[mag_col].values
 
