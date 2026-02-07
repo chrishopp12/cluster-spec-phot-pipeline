@@ -603,6 +603,9 @@ def load_bcg_catalog(cluster: "Cluster") -> dict[int, dict[str, Any]]:
             'label': str or '',
         }
     """
+
+    # TODO: This function is obsolete and should be deleted.
+
     df = pd.read_csv(cluster.bcg_file)
     if "bcg_id" not in df.columns or "z" not in df.columns:
         raise ValueError("BCGs.csv must have at least columns: 'bcg_id', 'z'.")
@@ -624,6 +627,133 @@ def load_bcg_catalog(cluster: "Cluster") -> dict[int, dict[str, Any]]:
             "label": str(r.get("label", "")),
         }
     return bcgs
+
+
+def read_bcg_csv(
+    cluster: "Cluster",
+    *,
+    verbose: bool = False,
+) -> pd.DataFrame:
+    """
+    Read the per-cluster BCG CSV and return the full DataFrame.
+
+    This function does NOT filter rows or select columns.
+    It is the single authoritative reader for BCGs.csv.
+
+    Required columns
+    ----------------
+    - RA
+    - Dec   (Dec or DEC accepted)
+
+    Optional / inherited columns
+    ----------------------------
+    - BCG_priority
+    - BCG_probability
+    - z, sigma_z, spec_source
+    - gmag, rmag, imag, g_r, r_i, g_i, lum_weight_*
+    - phot_source
+    - any future columns
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Must have attribute `bcg_file`.
+    verbose : bool
+        Print diagnostics.
+
+    Returns
+    -------
+    df : pd.DataFrame
+        Full BCG table. Empty DataFrame if file missing or empty.
+    """
+    path = Path(cluster.bcg_file)
+    if not path.exists():
+        if verbose:
+            print(f"BCG file not found: {path}")
+        return pd.DataFrame()
+
+    df = pd.read_csv(path)
+    if df.empty:
+        return df
+
+    # Normalize Dec column name
+    if "Dec" not in df.columns and "DEC" in df.columns:
+        df = df.rename(columns={"DEC": "Dec"})
+
+    numeric_cols = [
+        "RA", "Dec", "BCG_priority", "BCG_probability",
+        "z", "sigma_z",
+        "gmag", "rmag", "imag",
+        "g_r", "r_i", "g_i",
+        "lum_weight_g", "lum_weight_r", "lum_weight_i",
+        ]
+
+    df = coerce_to_numeric(df, numeric_cols)
+
+    return df
+
+def select_bcgs(
+    bcg_df: pd.DataFrame,
+    *,
+    bcg_id: int | None = None,
+    seeds_only: bool = False,
+) -> pd.DataFrame:
+    """
+    Select BCG rows from a full BCG DataFrame.
+
+    Parameters
+    ----------
+    bcg_df : pd.DataFrame
+        Full BCG DataFrame, as returned by `read_bcg_csv()`.
+    bcg_id : int or None
+        If specified, select only the row with this BCG ID.
+    seeds_only : bool
+        If True, select only rows with BCG_priority 1-5 (inclusive).
+
+    Returns
+    -------
+    pd.DataFrame
+         Filtered BCG DataFrame according to the specified criteria. Sorted by BCG_priority if that column exists.
+    """
+    if bcg_df.empty:
+        return bcg_df
+
+    out = bcg_df.copy()
+
+    if "BCG_priority" in out.columns:
+        if seeds_only:
+            out = out[(out["BCG_priority"] >= 1) & (out["BCG_priority"] <= 5)]
+        if bcg_id is not None:
+            out = out[out["BCG_priority"] == int(bcg_id)]
+
+    return out.sort_values("BCG_priority") if "BCG_priority" in out.columns else out
+
+
+def bcg_basic_info(
+    bcg_df: pd.DataFrame,
+) -> list[tuple[float, float, float | None, float | None]]:
+    """
+    Convert BCG DataFrame to (ra, dec, z, P) tuples.
+
+    Parameters
+    ----------
+    bcg_df : pd.DataFrame
+        BCG DataFrame with at least 'RA' and 'Dec' columns.
+        
+    Returns
+    -------
+    list of tuples
+        List of (ra, dec, z, P) tuples for each BCG.
+        z and P are None if not present or NaN.
+    """
+    out = []
+    for _, r in bcg_df.iterrows():
+        ra = float(r["RA"])
+        dec = float(r["Dec"])
+        z = None if pd.isna(r.get("z")) else float(r["z"])
+        p = None if pd.isna(r.get("BCG_probability")) else float(r["BCG_probability"])
+        out.append((ra, dec, z, p))
+    return out
 
 
 def pop_prefixed_kwargs(kwargs: dict[str, Any], prefix: str) -> dict[str, Any]:
