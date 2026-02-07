@@ -107,6 +107,50 @@ def find_first_val(*vals: Any) -> Any:
             return v
     return None
 
+
+def to_float_or_none(x: Any) -> float | None:
+    """
+    Convert to a finite float, else None.
+
+    Handles: None, NaN/inf, numpy scalars, masked values, numeric strings.
+    """
+    if x is None:
+        return None
+    # numpy masked / astropy masked
+    if hasattr(x, "mask") and bool(getattr(x, "mask", False)):
+        return None
+    try:
+        v = float(x)
+    except Exception:
+        return None
+    return v if np.isfinite(v) else None
+
+
+def coerce_to_numeric(
+        df: pd.DataFrame,
+        columns: list[str] | tuple[str, ...]
+    ) -> pd.DataFrame:
+    """
+    Coerces specified columns of a DataFrame to numeric, forcing errors to NaN.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame.
+    columns : list[str] | tuple[str, ...]
+        List of column names to coerce.
+
+    Returns
+    -------
+    out : pd.DataFrame
+        Modified DataFrame with specified columns coerced to numeric.
+    """
+    out = df.copy()
+    for col in columns:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors='coerce')
+    return out
+
 # ------------------------------------
 # File and Directory Utilities
 # ------------------------------------
