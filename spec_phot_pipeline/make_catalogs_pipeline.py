@@ -48,8 +48,10 @@ import pandas as pd
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
+from typing import Any
+
 from cluster import Cluster
-from my_utils import str2bool, emit_latex, query_redmapper_bcg_candidates
+from my_utils import str2bool, emit_latex, read_bcg_csv, select_bcgs, bcg_basic_info, get_redmapper_bcg_candidates, coerce_to_numeric
 
 
 # ------------------------------------
@@ -70,33 +72,6 @@ PHOT_SOURCE_COL = 'phot_source'
 # ------------------------------------
 # Helpers
 # ------------------------------------
-
-def _coerce_to_numeric(
-        df: pd.DataFrame,
-        columns: list[str] | tuple[str, ...]
-    ) -> pd.DataFrame:
-    """
-    Coerces specified columns of a DataFrame to numeric, forcing errors to NaN.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame.
-    columns : list[str] | tuple[str, ...]
-        List of column names to coerce.
-
-    Returns
-    -------
-    out : pd.DataFrame
-        Modified DataFrame with specified columns coerced to numeric.
-    """
-    out = df.copy()
-    for col in columns:
-        if col in out.columns:
-            out[col] = pd.to_numeric(out[col], errors='coerce')
-    return out
-
-
 def _standardize_redshift_df(df: pd.DataFrame) -> pd.DataFrame:
     """Ensure redshift DataFrame has standard columns and types.
 
@@ -131,7 +106,7 @@ def _standardize_redshift_df(df: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = np.nan if col != SPEC_SOURCE_COL else 'Unknown'
 
-    out = _coerce_to_numeric(out, [RA_COL, DEC_COL, Z_COL, SIGMA_Z_COL])
+    out = coerce_to_numeric(out, [RA_COL, DEC_COL, Z_COL, SIGMA_Z_COL])
     out = out.dropna(subset=[RA_COL, DEC_COL, Z_COL]).reset_index(drop=True)
 
     return out
@@ -161,7 +136,7 @@ def _standardize_phot_df(df: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = np.nan
 
-    out = _coerce_to_numeric(out, [RA_COL, DEC_COL])
+    out = coerce_to_numeric(out, [RA_COL, DEC_COL])
     out = out.dropna(subset=[RA_COL, DEC_COL]).reset_index(drop=True)
 
     return out
@@ -486,8 +461,77 @@ def create_matched_catalogs(
 # BCG Matching Functions
 # ------------------------------------
 
-def get_BCG(
+def get_BCGs(
         cluster: Cluster,
+        *,
+        manual_bcgs: list[tuple[float, float]] | None = None,
+        radius_arcmin: float = 5.0,
+        verbose: bool = True,
+) -> list[tuple[float, float, float | None, float | None]]:
+    """
+    Retrieve BCG candidates from BCGs.csv or redMaPPer query, with optional manual input.
+    """
+
+    bcg_df = read_bcg_csv(cluster, verbose=verbose)
+
+    if manual_bcgs is None:
+        if not bcg_df.empty:
+            bcgs = bcg_basic_info(select_bcgs(bcg_df))
+            return bcgs
+        if cluster.coords is not None:
+            rm_bcgs = get_redmapper_bcg_candidates(
+                cluster.coords,
+                radius_arcmin=radius_arcmin,
+                verbose=verbose,
+            )
+            if rm_bcgs:
+                return rm_bcgs
+        # Fallback to center
+        if cluster.coords is None:
+            raise ValueError(f"Cannot retrieve BCGs for {cluster.name!r}: cluster.coords is None.")
+        ra = float(cluster.coords.ra.deg)
+        dec = float(cluster.coords.dec.deg)
+        z = float(cluster.redshift) if getattr(cluster, "redshift", None) is not None else None
+        if verbose:
+            print("No BCGs in CSV and no redMaPPer match; using cluster.coords as fallback BCG.")
+        return [(ra, dec, z, 1.0)]
+
+    base_bcgs: list[tuple[float, float, float | None, float | None]] = []
+
+    if not bcg_df.empty:
+        base_bcgs = bcg_basic_info(select_bcgs(bcg_df).head(5))
+
+    if not base_bcgs and cluster.coords is not None:
+        rm_bcgs = get_redmapper_bcg_candidates(
+            cluster.coords,
+            radius_arcmin=radius_arcmin,
+            verbose=verbose,
+        )
+        if rm_bcgs:
+            base_bcgs = rm_bcgs
+    
+    bcgs_out = list(base_bcgs)  # Start with CSV or redMaPPer candidates
+    for ra_manual, dec_manual in manual_bcgs:
+        bcgs_out.append((float(ra_manual), float(dec_manual), None, None))
+    
+    if bcgs_out:
+        return bcgs_out
+    # Final fallback to cluster center
+    if cluster.coords is None:
+        raise ValueError(f"No BCG candidates available for {cluster.name!r}, and cluster.coords is None.")
+    ra = float(cluster.coords.ra.deg)
+    dec = float(cluster.coords.dec.deg)
+    z = float(cluster.redshift) if getattr(cluster, "redshift", None) is not None else None
+    if verbose:
+        print("No BCG candidates available; using cluster.coords as fallback BCG.")
+    return [(ra, dec, z, 1.0)]
+
+
+
+
+def match_BCGs(
+        cluster: Cluster,
+        bcg_candidates: list[tuple[float, float, float | None, float | None]],
         redshift_df: pd.DataFrame,
         *,
         match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
@@ -529,84 +573,6 @@ def get_BCG(
         )
         z = redshift_df[Z_COL].values
 
-
-    # Load BCG candidates from CSV
-    bcg_candidates: list[tuple[float, float, float | None, float | None]] = [] # (ra, dec, z, P)
-
-    # Candidates.csv
-    try:
-        data = pd.read_csv(cluster.bcg_csv_file)
-    except FileNotFoundError:
-        print(f"File not found: {cluster.bcg_csv_file}")
-        data = pd.DataFrame()
-
-
-    # If cluster exists in CSV
-    if not data.empty and cluster.name in data['NAME'].values:
-        bcg_data = data.loc[data['NAME'] == cluster.name]
-
-        # Dynamically collect only valid (non-empty/non-NaN) BCGs
-        ra_list, dec_list, prob_list = [], [], []
-        for i in range(5):
-            ra_val = bcg_data[f'RA_CEN{i}'].values[0] if f'RA_CEN{i}' in bcg_data.columns else None
-            dec_val = bcg_data[f'DEC_CEN{i}'].values[0] if f'DEC_CEN{i}' in bcg_data.columns else None
-            # Consider valid if neither is nan/None/empty
-            if (
-                ra_val not in [None, '', ' '] and dec_val not in [None, '', ' ']
-                and pd.notna(ra_val) and pd.notna(dec_val)
-            ):
-                ra_list.append(float(ra_val))
-                dec_list.append(float(dec_val))
-                # Probability column (may be missing)
-                p_col = f'P{i}'
-                if p_col in bcg_data.columns:
-                    prob_list.append(bcg_data[p_col].values[0])
-                else:
-                    prob_list.append(None)
-
-        for ra_bcg, dec_bcg, p in zip(ra_list, dec_list, prob_list):
-            bcg_candidates.append((float(ra_bcg), float(dec_bcg), None, p))
-
-    else:
-        print(f"Cluster '{cluster.name}' not found in CSV.")
-
-    # Append manual BCGs
-    if manual_BCGs:
-        for ra_manual, dec_manual in manual_BCGs:
-            bcg_candidates.append((float(ra_manual), float(dec_manual), None, None))
-
-    if not bcg_candidates:
-    # Fallback #1: try redMaPPer centering candidates near the cluster center
-        if cluster.coords is not None:
-            rm_cands = query_redmapper_bcg_candidates(
-                cluster.coords,
-                radius_arcmin=10.0,
-                verbose=verbose,
-            )
-            if rm_cands:
-                print("Using redMaPPer centering candidates as BCG list.")
-                bcg_candidates = rm_cands
-
-    if not bcg_candidates:
-        # Fallback #2: use the cluster center as a "best available" BCG.
-        if cluster.coords is None:
-            raise ValueError(
-                f"No BCG candidates available for {cluster.name!r}, and cluster.coords is None."
-            )
-
-        ra_fallback = float(cluster.coords.ra.deg)
-        dec_fallback = float(cluster.coords.dec.deg)
-        z_fallback = float(cluster.redshift) if cluster.redshift is not None else None
-        p_fallback = 1.0
-
-        print("No BCG candidates available; using cluster.coords as fallback BCG.")
-        bcg_candidates = [(ra_fallback, dec_fallback, z_fallback, p_fallback)]
-        if verbose:
-            print(f"Fallback BCG: RA={ra_fallback}, Dec={dec_fallback}, z={z_fallback}, P={p_fallback}")
-
-
-
-    # Match BCGs to redshifts
 
     bcg_coords = SkyCoord(
         ra=[bcg[0] for bcg in bcg_candidates] * u.deg,
@@ -682,6 +648,8 @@ def save_BCG_catalog(
         DataFrame containing the matched BCGs with their photometric information.
     """
     phot_df = _standardize_phot_df(phot_df)
+
+    output_rows: list[dict[str, Any]] = []
 
     if phot_df.empty:
         print("Photometric catalog is empty. Cannot match BCGs. Returning BCG table without photometry.")
@@ -983,9 +951,10 @@ def build_redshift_catalog(
         phot_catalog = catalog_legacy
     else:
         phot_catalog = catalog_panstarrs
-    BCGs = get_BCG(cluster, combined_spec_df, manual_BCGs=manual_list)
-    bcg_df = save_BCG_catalog(cluster, phot_catalog, BCGs, match_tol_arcsec=max_sep_arcsec)
-
+    BCGs = get_BCGs(cluster, manual_bcgs=manual_list)
+    BCGs_matched = match_BCGs(cluster, BCGs, combined_spec_df, match_tol_arcsec=max_sep_arcsec)    
+    bcg_df = save_BCG_catalog(cluster, phot_catalog, BCGs_matched, match_tol_arcsec=max_sep_arcsec)
+    
     if cluster.richness is not None and cluster.redshift is not None:
   
         print_cluster_table(cluster)
