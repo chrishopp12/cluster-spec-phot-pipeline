@@ -48,8 +48,10 @@ import pandas as pd
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
+from typing import Any
+
 from cluster import Cluster
-from my_utils import str2bool, emit_latex, query_redmapper_bcg_candidates
+from my_utils import str2bool, emit_latex, read_bcg_csv, select_bcgs, bcg_basic_info, get_redmapper_bcg_candidates, coerce_to_numeric, skycoord_from_df, make_skycoord
 
 
 # ------------------------------------
@@ -65,38 +67,16 @@ SIGMA_Z_COL = 'sigma_z'
 SPEC_SOURCE_COL = 'spec_source'
 PHOT_SOURCE_COL = 'phot_source'
 
-
+PROTECTED_BCG_KEYS = {
+    "RA",
+    "Dec",
+    "BCG_priority",
+    "BCG_probability",
+}
 
 # ------------------------------------
 # Helpers
 # ------------------------------------
-
-def _coerce_to_numeric(
-        df: pd.DataFrame,
-        columns: list[str] | tuple[str, ...]
-    ) -> pd.DataFrame:
-    """
-    Coerces specified columns of a DataFrame to numeric, forcing errors to NaN.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame.
-    columns : list[str] | tuple[str, ...]
-        List of column names to coerce.
-
-    Returns
-    -------
-    out : pd.DataFrame
-        Modified DataFrame with specified columns coerced to numeric.
-    """
-    out = df.copy()
-    for col in columns:
-        if col in out.columns:
-            out[col] = pd.to_numeric(out[col], errors='coerce')
-    return out
-
-
 def _standardize_redshift_df(df: pd.DataFrame) -> pd.DataFrame:
     """Ensure redshift DataFrame has standard columns and types.
 
@@ -131,7 +111,7 @@ def _standardize_redshift_df(df: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = np.nan if col != SPEC_SOURCE_COL else 'Unknown'
 
-    out = _coerce_to_numeric(out, [RA_COL, DEC_COL, Z_COL, SIGMA_Z_COL])
+    out = coerce_to_numeric(out, [RA_COL, DEC_COL, Z_COL, SIGMA_Z_COL])
     out = out.dropna(subset=[RA_COL, DEC_COL, Z_COL]).reset_index(drop=True)
 
     return out
@@ -161,7 +141,7 @@ def _standardize_phot_df(df: pd.DataFrame) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = np.nan
 
-    out = _coerce_to_numeric(out, [RA_COL, DEC_COL])
+    out = coerce_to_numeric(out, [RA_COL, DEC_COL])
     out = out.dropna(subset=[RA_COL, DEC_COL]).reset_index(drop=True)
 
     return out
@@ -486,17 +466,168 @@ def create_matched_catalogs(
 # BCG Matching Functions
 # ------------------------------------
 
-def get_BCG(
+def _print_top_n_matches(
+    *,
+    label: str,
+    bcg_i: int,
+    ra_bcg: float,
+    dec_bcg: float,
+    cat_coords: SkyCoord,
+    sep2d: u.Quantity,
+    cat_df: pd.DataFrame,
+    n: int,
+    source_col: str,
+    z_col: str = Z_COL,
+) -> None:
+    """
+    Verbose helper: print top-N closest catalog matches for one BCG.
+
+    Parameters
+    ----------
+    label : str
+        Label for the catalog (e.g. "spec" or "phot").
+    bcg_i : int
+        1-based BCG index for printing.
+    ra_bcg, dec_bcg : float
+        BCG coordinates (deg).
+    cat_coords : SkyCoord
+        Catalog coordinates aligned with cat_df rows.
+    sep2d : astropy Quantity/Angle
+        Separations aligned with cat_coords / cat_df rows.
+    cat_df : pd.DataFrame
+        Catalog DataFrame.
+    n : int
+        Number of closest matches to print.
+    source_col : str
+        Column name to print for source ("spec_source" or "phot_source").
+    z_col : str
+        Preferred z column name (defaults to Z_COL).
+    """
+    if len(cat_coords) == 0:
+        print(f"  No catalog coordinates available for {label} matching.")
+        return
+
+    order = np.argsort(sep2d.to_value(u.arcsec))
+    top = order[: min(n, len(order))]
+
+    print(
+        f"\nTop {len(top)} closest {label} matches for BCG {bcg_i} "
+        f"(RA={ra_bcg:.6f}, Dec={dec_bcg:.6f}):"
+    )
+
+    for rank, idx in enumerate(top, start=1):
+        idx = int(idx)
+        ra_m = float(cat_coords[idx].ra.deg)
+        dec_m = float(cat_coords[idx].dec.deg)
+        sep_a = float(sep2d[idx].to_value(u.arcsec))
+
+        row = cat_df.iloc[idx]
+
+        z_val = row.get(z_col, row.get("z", "N/A"))
+        src_val = row.get(source_col, row.get("source", "N/A"))
+
+        print(
+            f"  {rank}. RA={ra_m:.6f}, Dec={dec_m:.6f}, "
+            f"Sep={sep_a:.3f} arcsec, z={z_val}, {source_col}={src_val}"
+        )
+
+
+def get_BCGs(
         cluster: Cluster,
+        *,
+        manual_bcgs: list[tuple[float, float]] | None = None,
+        radius_arcmin: float = 5.0,
+        verbose: bool = True,
+) -> list[tuple[float, float, float | None, float | None]]:
+    """
+    Retrieve BCG candidates from BCGs.csv or redMaPPer query, with optional manual input.
+    """
+
+    bcg_df = read_bcg_csv(cluster, verbose=verbose)
+
+    if manual_bcgs is None:
+        if not bcg_df.empty:
+            bcgs = bcg_basic_info(select_bcgs(bcg_df))
+            return bcgs
+        if cluster.coords is not None:
+            rm_bcgs = get_redmapper_bcg_candidates(
+                cluster.coords,
+                radius_arcmin=radius_arcmin,
+                verbose=verbose,
+            )
+            if rm_bcgs:
+                return rm_bcgs
+        # Fallback to center
+        if cluster.coords is None:
+            raise ValueError(f"Cannot retrieve BCGs for {cluster.name!r}: cluster.coords is None.")
+        ra = float(cluster.coords.ra.deg)
+        dec = float(cluster.coords.dec.deg)
+        z = float(cluster.redshift) if getattr(cluster, "redshift", None) is not None else None
+        if verbose:
+            print("No BCGs in CSV and no redMaPPer match; using cluster.coords as fallback BCG.")
+        return [(ra, dec, z, 1.0)]
+
+    base_bcgs: list[tuple[float, float, float | None, float | None]] = []
+
+    if not bcg_df.empty:
+        base_bcgs = bcg_basic_info(select_bcgs(bcg_df).head(5))
+
+    if not base_bcgs and cluster.coords is not None:
+        rm_bcgs = get_redmapper_bcg_candidates(
+            cluster.coords,
+            radius_arcmin=radius_arcmin,
+            verbose=verbose,
+        )
+        if rm_bcgs:
+            base_bcgs = rm_bcgs
+    
+    bcgs_out = list(base_bcgs)  # Start with CSV or redMaPPer candidates
+    for ra_manual, dec_manual in manual_bcgs:
+        bcgs_out.append((float(ra_manual), float(dec_manual), None, None))
+    
+    if bcgs_out:
+        return bcgs_out
+    # Final fallback to cluster center
+    if cluster.coords is None:
+        raise ValueError(f"No BCG candidates available for {cluster.name!r}, and cluster.coords is None.")
+    ra = float(cluster.coords.ra.deg)
+    dec = float(cluster.coords.dec.deg)
+    z = float(cluster.redshift) if getattr(cluster, "redshift", None) is not None else None
+    if verbose:
+        print("No BCG candidates available; using cluster.coords as fallback BCG.")
+    return [(ra, dec, z, 1.0)]
+
+
+def merge_matched_row(
+    base: dict[str, Any],
+    matched: dict[str, Any],
+    *,
+    protected_keys: set[str] = PROTECTED_BCG_KEYS,
+) -> dict[str, Any]:
+    """
+    Merge a matched catalog row into a base BCG row, without overwriting protected keys.
+    """
+    out = dict(base)
+    for k, v in matched.items():
+        if k in protected_keys:
+            continue
+        # Only set if the base doesn't already have it OR base value is missing
+        if k not in out or pd.isna(out[k]) or out[k] in ("", None):
+            out[k] = v
+    return out
+
+
+def match_bcgs_spec(
+        cluster: Cluster,
+        bcgs: list[tuple[float, float, float | None, float | None]],
         redshift_df: pd.DataFrame,
         *,
         match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
-        manual_BCGs: list[tuple[float, float]] | None = None,
+        n_print: int = 5,
         verbose: bool = True,
-    ) -> list[tuple[float, float, float | None, float | None]]:
+    ) -> list[dict[str, Any]]:
     """
     Finds BCG coordinates and matches them with the closest redshifted galaxy within a given separation.
-    Includes BCG selection probabilities (P0, P1, ..., P4) if available. Also allows for manual BCG input.
 
     Parameters
     ----------
@@ -506,173 +637,235 @@ def get_BCG(
         DataFrame containing redshift information for all galaxies.
     match_tol_arcsec : float
         Maximum allowed separation (in arcseconds) to assign a redshift to a BCG.
-    manual_BCGs : list of tuple, optional
-        List of manually added BCGs in (RA, Dec) format. Redshift will be matched if possible; P will be None.
-
+    verbose : bool
+        If True, prints detailed matching information to the console.
     Returns
     -------
-    bcg_candidates : list of tuple
+    bcgs : list of dict
         List of BCGs with matched redshifts and probabilities, in the format (RA, Dec, z, P).
 
     """
     redshift_df = _standardize_redshift_df(redshift_df)
 
-    if redshift_df.empty:
-        print("Redshift catalog is empty. Returning BCGs without redshift matches.")
-        galaxy_coords = SkyCoord(ra=[] * u.deg, dec=[] * u.deg, frame='icrs')
-        z = np.array([], dtype=float)
-    else:
-        galaxy_coords = SkyCoord(
-            ra=redshift_df[RA_COL].values * u.deg,
-            dec=redshift_df[DEC_COL].values * u.deg,
-            frame='icrs'
-        )
-        z = redshift_df[Z_COL].values
+    rows: list[dict[str, Any]] = []
 
-
-    # Load BCG candidates from CSV
-    bcg_candidates: list[tuple[float, float, float | None, float | None]] = [] # (ra, dec, z, P)
-
-    # Candidates.csv
-    try:
-        data = pd.read_csv(cluster.bcg_csv_file)
-    except FileNotFoundError:
-        print(f"File not found: {cluster.bcg_csv_file}")
-        data = pd.DataFrame()
-
-
-    # If cluster exists in CSV
-    if not data.empty and cluster.name in data['NAME'].values:
-        bcg_data = data.loc[data['NAME'] == cluster.name]
-
-        # Dynamically collect only valid (non-empty/non-NaN) BCGs
-        ra_list, dec_list, prob_list = [], [], []
-        for i in range(5):
-            ra_val = bcg_data[f'RA_CEN{i}'].values[0] if f'RA_CEN{i}' in bcg_data.columns else None
-            dec_val = bcg_data[f'DEC_CEN{i}'].values[0] if f'DEC_CEN{i}' in bcg_data.columns else None
-            # Consider valid if neither is nan/None/empty
-            if (
-                ra_val not in [None, '', ' '] and dec_val not in [None, '', ' ']
-                and pd.notna(ra_val) and pd.notna(dec_val)
-            ):
-                ra_list.append(float(ra_val))
-                dec_list.append(float(dec_val))
-                # Probability column (may be missing)
-                p_col = f'P{i}'
-                if p_col in bcg_data.columns:
-                    prob_list.append(bcg_data[p_col].values[0])
-                else:
-                    prob_list.append(None)
-
-        for ra_bcg, dec_bcg, p in zip(ra_list, dec_list, prob_list):
-            bcg_candidates.append((float(ra_bcg), float(dec_bcg), None, p))
-
-    else:
-        print(f"Cluster '{cluster.name}' not found in CSV.")
-
-    # Append manual BCGs
-    if manual_BCGs:
-        for ra_manual, dec_manual in manual_BCGs:
-            bcg_candidates.append((float(ra_manual), float(dec_manual), None, None))
-
-    if not bcg_candidates:
-    # Fallback #1: try redMaPPer centering candidates near the cluster center
-        if cluster.coords is not None:
-            rm_cands = query_redmapper_bcg_candidates(
-                cluster.coords,
-                radius_arcmin=10.0,
-                verbose=verbose,
-            )
-            if rm_cands:
-                print("Using redMaPPer centering candidates as BCG list.")
-                bcg_candidates = rm_cands
-
-    if not bcg_candidates:
-        # Fallback #2: use the cluster center as a "best available" BCG.
-        if cluster.coords is None:
-            raise ValueError(
-                f"No BCG candidates available for {cluster.name!r}, and cluster.coords is None."
-            )
-
-        ra_fallback = float(cluster.coords.ra.deg)
-        dec_fallback = float(cluster.coords.dec.deg)
-        z_fallback = float(cluster.redshift) if cluster.redshift is not None else None
-        p_fallback = 1.0
-
-        print("No BCG candidates available; using cluster.coords as fallback BCG.")
-        bcg_candidates = [(ra_fallback, dec_fallback, z_fallback, p_fallback)]
+    if not bcgs:
         if verbose:
-            print(f"Fallback BCG: RA={ra_fallback}, Dec={dec_fallback}, z={z_fallback}, P={p_fallback}")
+            print("No BCG candidates provided. Returning empty catalog.")
+        return rows
 
+    for i, (ra, dec, z, P) in enumerate(bcgs):
+        row_data = {
+            "BCG_priority": i + 1,
+            RA_COL: ra,
+            DEC_COL: dec,
+            "BCG_probability": P,
+        }
+        rows.append(row_data)
 
+    if redshift_df.empty:
+        if verbose:
+            print("Redshift catalog is empty. Cannot match BCGs. Returning BCG table without redshifts.")
+        return rows
 
-    # Match BCGs to redshifts
+    spec_coords = skycoord_from_df(redshift_df, ra_col=RA_COL, dec_col=DEC_COL)
+    bcg_coords = make_skycoord([b[0] for b in bcgs], [b[1] for b in bcgs])
 
-    bcg_coords = SkyCoord(
-        ra=[bcg[0] for bcg in bcg_candidates] * u.deg,
-        dec=[bcg[1] for bcg in bcg_candidates] * u.deg,
-        frame="icrs"
-    )
-
-    if len(galaxy_coords) == 0:
-        print("No galaxies with redshifts available for matching.")
-        return [(ra, dec, None, p) for ra, dec, _, p in bcg_candidates]
+    if len(spec_coords) == 0:
+        if verbose:
+            print("No galaxies with redshifts available for matching.")
+        return rows
     
-    bcg_idx, gal_idx, sep = match_skycoords_unique(
+    bcg_idx, gal_idx, sep_arcsec = match_skycoords_unique(
         bcg_coords,
-        galaxy_coords,
+        spec_coords,
         match_tol_arcsec=match_tol_arcsec,
     )
 
-    sep_bcg = [None] * len(bcg_candidates)
-
-
-    for b_idx, g_idx, s in zip(bcg_idx, gal_idx, sep):
-        bcg_candidates[b_idx] = (bcg_candidates[b_idx][0], bcg_candidates[b_idx][1], z[g_idx], bcg_candidates[b_idx][3])
-        sep_bcg[b_idx] = s
+    match_map = {b_idx: (g_idx, sep) for b_idx, g_idx, sep in zip(bcg_idx, gal_idx, sep_arcsec)}
 
 
     # Verbose reporting
     if verbose:
         print(f"\n--- BCG Matching Report for {cluster.name} ---")
-        for i, (ra, dec, z_bcg, prob) in enumerate(bcg_candidates):
-            sep_info = f", closest sep = {sep_bcg[i]:.2f}\"" if sep_bcg[i] is not None else ", no match"
-            z_str = f"{z_bcg:.5f}" if z_bcg is not None else "unknown"
-            print(f"BCG {i+1}: RA = {ra:.5f}, Dec = {dec:.5f}, z = {z_str}{sep_info}")
 
-            if sep_bcg[i] is None:
-                print(f"WARNING: No galaxy found within {match_tol_arcsec} arcsec!")
+    for i, (ra_bcg, dec_bcg, _z, _P) in enumerate(bcgs):
+        bcg_coord = make_skycoord([ra_bcg], [dec_bcg])
+        sep_all = bcg_coord.separation(spec_coords)
+
+        if verbose:
+            _print_top_n_matches(
+                label="spectroscopic",
+                bcg_i=i + 1,
+                ra_bcg=ra_bcg,
+                dec_bcg=dec_bcg,
+                cat_coords=spec_coords,
+                sep2d=sep_all,
+                cat_df=redshift_df,
+                n=n_print,
+                source_col=SPEC_SOURCE_COL,
+                z_col=Z_COL,
+            )
+
+        if i in match_map:
+            g_idx, sep = match_map[i]
+            matched_row = redshift_df.iloc[g_idx].to_dict()
+            rows[i] = merge_matched_row(rows[i], matched_row)
+
+            if verbose:
+                z_val = rows[i].get(Z_COL, rows[i].get("z", np.nan))
+                z_str = f"{z_val:.5f}" if pd.notna(z_val) else "unknown"
+                print(f"BCG {i+1} matched to galaxy at RA={matched_row[RA_COL]:.5f}, Dec={matched_row[DEC_COL]:.5f}, z={z_str}, source={matched_row.get(SPEC_SOURCE_COL, 'N/A')}, sep={sep:.2f}\"")
+        else:
+                if verbose:
+                    print(f"BCG {i+1} has no spectroscopic match within {match_tol_arcsec} arcsec.")
+                    print(f"Closest galaxy is at separation {sep_all.min().arcsec:.2f}\" but exceeds tolerance.")
+
+
+    if verbose:
 
         print("--- End of Report ---\n")
 
-    return bcg_candidates
+    return rows
 
 
-def save_BCG_catalog(
-        cluster: Cluster,
+def match_bcgs_phot(
+        bcgs: list[tuple[float, float, float | None, float | None]],
         phot_df: pd.DataFrame,
-        bcgs: list[tuple],
         *,
         match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
-        n_bcgs: int = 5,
+        n_print: int = 5,
+        verbose: bool = True,
+    ) -> list[dict[str, Any]]:
+    """
+    Match BCG candidates from `candidate_mergers.csv` to legacy redshift+photometry catalog,
+    append P and match separation. Always includes all BCGs, even if no match is found.
+
+    Parameters
+    ----------
+    phot_df : pd.DataFrame
+        Photometric catalog DataFrame (e.g., legacy or PanSTARRS) containing 'RA', 'Dec', 'z', 'sigma_z', 'source', and photometry columns.
+    bcgs : list[tuple[float, float, float | None, float | None]]
+        List of BCG coordinates and redshifts, where each tuple is (ra, dec, z, P).
+    match_tol_arcsec : float
+        Maximum allowed separation for BCG-galaxy matching (arcsec).
+    n_print : int
+        Number of closest matches to print for each BCG (for verbose output).
+    verbose : bool
+        If True, print detailed matching information to console.
+
+    Returns
+    -------
+    output_rows : list[dict[str, Any]]
+        List of dictionaries containing the matched BCGs with their photometric information.
+    """
+    phot_df = _standardize_phot_df(phot_df)
+
+    rows: list[dict[str, Any]] = []
+
+    if not bcgs:
+        if verbose:
+            print("No BCG candidates provided. Returning empty catalog.")
+        return rows
+
+    for i, (ra, dec, z, P) in enumerate(bcgs):
+        row_data = {
+            "BCG_priority": i + 1,
+            RA_COL: ra,
+            DEC_COL: dec,
+            "BCG_probability": P,
+        }
+        rows.append(row_data)
+
+    if phot_df.empty:
+        if verbose:
+            print("Photometric catalog is empty. Cannot match BCGs. Returning BCG table without photometry.")
+        return rows
+
+    # Load full redshift+photometry catalog
+    phot_coords = skycoord_from_df(phot_df, ra_col=RA_COL, dec_col=DEC_COL)
+    bcg_coords = make_skycoord([b[0] for b in bcgs], [b[1] for b in bcgs])
+
+
+    phot_idx_all, sep_nn, _ = bcg_coords.match_to_catalog_sky(phot_coords)
+
+    # Verbose reporting
+    if verbose:
+        print("\n--- BCG Photometric Matching Report ---")
+
+    for i, (ra_bcg, dec_bcg, _z, _P) in enumerate(bcgs):
+        bcg_coord = make_skycoord([ra_bcg], [dec_bcg])
+        sep_all = bcg_coord.separation(phot_coords)
+
+        if verbose:
+            _print_top_n_matches(
+                label="photometric",
+                bcg_i=i + 1,
+                ra_bcg=ra_bcg,
+                dec_bcg=dec_bcg,
+                cat_coords=phot_coords,
+                sep2d=sep_all,
+                cat_df=phot_df,
+                source_col=PHOT_SOURCE_COL,
+                z_col=Z_COL,
+                n=n_print,
+            )
+
+        if sep_nn[i] < (match_tol_arcsec * u.arcsec):
+            closest_idx = phot_idx_all[i]
+            matched_row = phot_df.iloc[closest_idx].to_dict()
+            rows[i] = merge_matched_row(rows[i], matched_row)
+
+            if verbose:
+                z_val = rows[i].get(Z_COL, rows[i].get("z", np.nan))
+                z_str = f"{z_val:.5f}" if pd.notna(z_val) else "unknown"
+                print(f"BCG {i+1} matched to photometric source at RA={matched_row[RA_COL]:.5f}, Dec={matched_row[DEC_COL]:.5f}, z={z_str}, source={matched_row.get(PHOT_SOURCE_COL, 'N/A')}, sep={sep_nn[i].arcsec:.2f}\"")
+
+        else:
+                if verbose:
+                    print(f"BCG {i+1} has no photometric match within {match_tol_arcsec} arcsec.")
+                    print(f"Closest photometric source is at separation {sep_nn[i].arcsec:.2f}\" but exceeds tolerance.")
+
+
+    if verbose:
+        print("--- End of Report ---\n")
+
+    return rows
+
+def merge_bcg_rows(
+    phot_rows: list[dict[str, Any]],
+    spec_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Merge photometric and spectroscopic BCG rows based on BCG_priority, RA, and Dec.
+    """
+    phot_by_id = {int(r["BCG_priority"]): r for r in phot_rows}
+    spec_by_id = {int(r["BCG_priority"]): r for r in spec_rows}
+
+    merged_rows: list[dict[str, Any]] = []
+    for bcg_id in sorted(set(phot_by_id.keys()) | set(spec_by_id.keys())):
+        phot_row = phot_by_id.get(bcg_id, {})
+        spec_row = spec_by_id.get(bcg_id, {})
+        merged_row = merge_matched_row(phot_row, spec_row)
+        merged_rows.append(merged_row)
+
+    return merged_rows
+
+def write_bcg_csv(
+        cluster: Cluster,
+        bcgs: list[tuple],
+        *,
         verbose: bool = True,
     ) -> pd.DataFrame:
     """
-    Match BCG candidates from `candidate_mergers.csv` to legacy redshift+photometry catalog,
-    append P and match separation, and save to CSV. Always includes all BCGs, even if no match is found.
+    Save the BCG catalog to a CSV file, including all BCGs even if unmatched.
 
     Parameters
     ----------
     cluster : Cluster
         Cluster object containing all necessary metadata (paths, coordinates, etc.).
-    phot_df : pd.DataFrame
-        Photometric catalog DataFrame (e.g., legacy or PanSTARRS) containing 'RA', 'Dec', 'z', 'sigma_z', 'source', and photometry columns.
     bcgs : list of tuples
         List of BCG coordinates and redshifts, where each tuple is (ra, dec, z, P).
-    match_tol_arcsec : float
-        Maximum allowed separation for BCG-galaxy matching (arcsec).
-    n_bcgs : int
-        Number of closest matches to print for each BCG (for verbose output).
     verbose : bool
         If True, print detailed matching information to console.
 
@@ -681,94 +874,29 @@ def save_BCG_catalog(
     output_df : pd.DataFrame
         DataFrame containing the matched BCGs with their photometric information.
     """
-    phot_df = _standardize_phot_df(phot_df)
-
-    if phot_df.empty:
-        print("Photometric catalog is empty. Cannot match BCGs. Returning BCG table without photometry.")
-        output_rows = []
-        for i, (ra_bcg, dec_bcg, z_match, P) in enumerate(bcgs):
-            row_data = {
-                RA_COL: ra_bcg,
-                DEC_COL: dec_bcg,
-                "BCG_separation_arcsec": np.nan,
-                "BCG_priority": i + 1,
-                "BCG_input_RA": ra_bcg,
-                "BCG_input_Dec": dec_bcg,
-                "BCG_probability": P,
-            }
-            output_rows.append(row_data)
-        output_df = pd.DataFrame(output_rows)
-        output_csv = os.path.join(cluster.redshift_path, 'BCGs.csv')
-        output_df.to_csv(output_csv, index=False)
-        print(f"Saved {len(output_df)} BCG(s) to: {output_csv} (no photometry available)")
-        return output_df
-
-    # Load full redshift+photometry catalog
-    phot_coords = SkyCoord(
-        phot_df[RA_COL].values * u.deg,
-        phot_df[DEC_COL].values * u.deg,
-        frame='icrs'
-    )
-
+  
+    output_df = pd.DataFrame(bcgs)
+    output_df.to_csv(cluster.bcg_file, index=False)
     if verbose:
-        for i, bcg in enumerate(bcgs):
-            print(f"Processing BCG {i+1}: RA={bcg[0]}, Dec={bcg[1]}, z={bcg[2]}, P={bcg[3]}")
-
-    output_rows: list[dict] = []
-    for i, (ra_bcg, dec_bcg, z_match, P) in enumerate(bcgs):
-        bcg_coord = SkyCoord(ra_bcg * u.deg, dec_bcg * u.deg, frame='icrs')
-        sep = bcg_coord.separation(phot_coords)
-        min_sep = sep.min().arcsec
-        closest_idx = sep.argmin()
-        closest_ra = phot_coords[closest_idx].ra.deg
-        closest_dec = phot_coords[closest_idx].dec.deg
-        
-        row_data = {}
-        # Get sorted index of separations
-        sorted_indices = np.argsort(sep.arcsec)
-        if verbose:
-            print(f"Closest match for BCG {i+1}: RA={closest_ra:.6f}, Dec={closest_dec:.6f}, Sep={min_sep:.3f} arcsec")
-            print(f"\nTop {n_bcgs} closest matches for BCG {i+1} (RA={ra_bcg:.6f}, Dec={dec_bcg:.6f}):")
-        for j in range(n_bcgs):
-            idx = sorted_indices[j]
-            if verbose:
-                print(f"  {j+1}. RA={phot_coords[idx].ra.deg:.6f}, Dec={phot_coords[idx].dec.deg:.6f}, Sep={sep[idx].arcsec:.3f} arcsec")
-
-
-        if min_sep <= match_tol_arcsec:
-            match_idx = sep.argmin()
-            matched_row = phot_df.iloc[match_idx]
-
-            # Copy all photometric catalog columns
-            row_data.update(matched_row.to_dict())
-
-            # Add separation info
-            row_data["BCG_separation_arcsec"] = min_sep
-        else:
-            # No match: fill legacy fields with NaN
-            row_data["RA"] = ra_bcg
-            row_data["Dec"] = dec_bcg
-            row_data["BCG_separation_arcsec"] = np.nan
-            row_data["z"] = z_match if z_match is not None else np.nan
-
-        # Always include metadata
-        row_data["BCG_priority"] = i + 1
-        row_data["BCG_input_RA"] = ra_bcg
-        row_data["BCG_input_Dec"] = dec_bcg
-        row_data["BCG_probability"] = P
-
-
-
-
-        output_rows.append(row_data)
-
-
-    output_csv = os.path.join(cluster.redshift_path, 'BCGs.csv')
-    output_df = pd.DataFrame(output_rows)
-    output_df.to_csv(output_csv, index=False)
-    print(f"Saved {len(output_df)} BCG(s) to: {output_csv} (including unmatched)")
+        print(f"Saved {len(output_df)} BCG(s) to: {cluster.bcg_file} (including unmatched)")
     return output_df
 
+
+def save_BCG_catalog(
+        cluster: Cluster,
+        phot_df: pd.DataFrame,
+        redshift_df: pd.DataFrame,
+        bcgs: list[tuple[float, float, float | None, float | None]],
+        *,
+        match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
+        verbose: bool = True,
+) -> pd.DataFrame:
+
+    phot_rows = match_bcgs_phot(bcgs, phot_df, match_tol_arcsec=match_tol_arcsec, verbose=verbose)
+    spec_rows = match_bcgs_spec(cluster, bcgs, redshift_df, match_tol_arcsec=match_tol_arcsec, verbose=verbose)
+    merged_rows = merge_bcg_rows(phot_rows, spec_rows)
+
+    return write_bcg_csv(cluster, merged_rows, verbose=verbose)
 
 # ------------------------------------
 # Table Functions
@@ -983,9 +1111,9 @@ def build_redshift_catalog(
         phot_catalog = catalog_legacy
     else:
         phot_catalog = catalog_panstarrs
-    BCGs = get_BCG(cluster, combined_spec_df, manual_BCGs=manual_list)
-    bcg_df = save_BCG_catalog(cluster, phot_catalog, BCGs, match_tol_arcsec=max_sep_arcsec)
-
+    BCGs = get_BCGs(cluster, manual_bcgs=manual_list)
+    bcg_df = save_BCG_catalog(cluster, phot_catalog, combined_spec_df, BCGs, match_tol_arcsec=max_sep_arcsec)
+    
     if cluster.richness is not None and cluster.redshift is not None:
   
         print_cluster_table(cluster)

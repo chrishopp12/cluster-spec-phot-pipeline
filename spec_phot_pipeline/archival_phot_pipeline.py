@@ -53,7 +53,7 @@ from astroquery.vizier import Vizier
 from astroquery.utils.tap.core import TapPlus
 
 from cluster import Cluster
-from my_utils import str2bool
+from my_utils import str2bool, coerce_to_numeric
 
 
 # ------------------------------------
@@ -127,7 +127,7 @@ def _standardize_phot_df(
             out[col] = np.nan
 
     # Ensure numeric types, drop missing coords
-    out = _coerce_to_numeric(out, (RA_COL, DEC_COL, *MAG_COLS))
+    out = coerce_to_numeric(out, (RA_COL, DEC_COL, *MAG_COLS))
     out = out.dropna(subset=[RA_COL, DEC_COL]).reset_index(drop=True)
 
     # Set source column
@@ -160,32 +160,6 @@ def _open_or_build_phot_df(file_path: str) -> pd.DataFrame:
     else:
         df = _build_phot_df()
     return df
-
-
-def _coerce_to_numeric(
-        df: pd.DataFrame,
-        columns: list[str] | tuple[str, ...]
-    ) -> pd.DataFrame:
-    """
-    Coerces specified columns of a DataFrame to numeric, forcing errors to NaN.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame.
-    columns : list[str] | tuple[str, ...]
-        List of column names to coerce.
-
-    Returns
-    -------
-    out : pd.DataFrame
-        Modified DataFrame with specified columns coerced to numeric.
-    """
-    out = df.copy()
-    for col in columns:
-        if col in out.columns:
-            out[col] = pd.to_numeric(out[col], errors='coerce')
-    return out
 
 
 def _save_photometry(
@@ -419,7 +393,7 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
         Modified DataFrame with added derived columns.
     """
     out = df.copy()
-    out = _coerce_to_numeric(out, list(MAG_COLS))
+    out = coerce_to_numeric(out, list(MAG_COLS))
 
     out = add_luminosity_weights(out)
     out = add_colors(out)

@@ -446,6 +446,12 @@ def main():
         metavar=("RA", "DEC"),
         help="Manually specify a BCG position as RA DEC in degrees. Repeatable.",
     )
+    parser.add_argument(
+        "--clear-manual-bcgs",
+        action="store_true",
+        help="Clear any manual BCGs stored in BCGs.csv (use only seed BCGs).",
+    )
+
 
 
     # Skip flags
@@ -535,7 +541,12 @@ def main():
         if val is not None:
             cluster_kwargs[key.replace("-", "_")] = val
 
-    manual_list = [tuple(x) for x in (args.manual_bcg or [])]  # list[tuple[float, float]]
+    # manual_list = None if args.manual_bcg is None else [tuple(x) for x in (args.manual_bcg)]  # list[tuple[float, float]]
+    if args.clear_manual_bcgs:
+        manual_list: list[tuple[float, float]] | None = []
+    else:
+        manual_list = None if args.manual_bcg is None else [tuple(x) for x in args.manual_bcg]
+
 
     redshift_kwargs = _parse_json_kwargs(args.redshift_kwargs, "--redshift-kwargs")
     photometry_kwargs = _parse_json_kwargs(args.photometry_kwargs, "--photometry-kwargs")
