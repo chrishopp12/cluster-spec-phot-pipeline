@@ -26,6 +26,8 @@ import argparse
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+import tempfile
+import shutil
 
 import pandas as pd
 import numpy as np
@@ -48,6 +50,9 @@ from scipy.ndimage import uniform_filter
 from scipy.stats import gaussian_kde
 
 from astroquery.vizier import Vizier
+
+import matplotlib as mpl
+
 
 if TYPE_CHECKING:
     from cluster import Cluster
@@ -350,6 +355,14 @@ def get_redmapper_bcg_candidates(
         p = to_float_or_none(redmapper_results.get(f"PCen{i}"))
 
         bcgs.append((ra, dec, None, p))
+
+    # Print a nice table of cluster info
+    cluster_info = get_redmapper_cluster_info(coord, radius_arcmin=radius_arcmin, verbose=verbose)
+    if verbose:
+        print(f"Cluster '{cluster_info['name']}': zlambda={cluster_info['zlambda']}, lambda={cluster_info['lambda']}")
+        print("BCG candidates:")
+        for i, (ra, dec, _, p) in enumerate(bcgs):
+            print(f"  Candidate {i}: RA={ra}, Dec={dec}, Pcen={p}")
 
     return bcgs
 
@@ -1303,39 +1316,27 @@ def load_photo_coords(
 
 
 def finalize_figure(
-        fig: plt.Figure,
-        show_plots: bool = False,
-        save_plots: bool = False,
-        save_path: str | None | os.PathLike = None,
-        filename: str | None = None
-    ) -> None:
-    """
-    Save and/or show a figure, then close it so it can't pop up later.
-
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        The figure to finalize.
-    show_plots : bool
-        If True, display the figure interactively.
-    save_plots : bool
-        If True, save the figure to `save_path`.
-    save_path : str | None | os.PathLike
-        Path to save the figure (PDF/PNG). Ignored if None or save_plots=False.
-    filename : str or None
-        Filename to use if save_path is a directory.
-
-    Cases
-    -----
-    - save_plots and show_plots: save, show, then close
-    - save_plots only:           save, then close
-    - show_plots only:           show, then close
-    - neither:                   do nothing (caller manages the figure)
-    """
-
+    fig: plt.Figure,
+    show_plots: bool = False,
+    save_plots: bool = False,
+    save_path: str | None | os.PathLike = None,
+    filename: str | None = None,
+) -> None:
     save_file = resolve_save_path(save_plots, save_path, filename)
+
     if save_file:
-        fig.savefig(save_file, dpi=450, bbox_inches="tight")
+        save_file = Path(save_file)
+        save_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Stage to a guaranteed-local temp dir, then move into final location.
+        with tempfile.TemporaryDirectory() as td:
+            staged = Path(td) / save_file.name
+
+            # Avoid Type3 embedding path; keep PDF output consistent
+            with mpl.rc_context({"pdf.fonttype": 42, "ps.fonttype": 42}):
+                fig.savefig(staged, dpi=450, bbox_inches="tight")
+
+            shutil.move(str(staged), str(save_file))
 
     if show_plots:
         try:
@@ -1346,7 +1347,7 @@ def finalize_figure(
 
     if save_plots or show_plots:
         plt.close(fig)
-
+    
 
 def resolve_save_path(
         save_plots: bool | None = None,
