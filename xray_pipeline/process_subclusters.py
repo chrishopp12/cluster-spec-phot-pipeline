@@ -91,9 +91,11 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from scipy.spatial import ConvexHull
 
 from cluster import Cluster
-from my_utils import load_dataframes, pop_prefixed_kwargs, str2bool, load_bcg_catalog
-from xray_pipeline.process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms
-from xray_pipeline.xray_plotting import plot_redshift_overlay, plot_optical
+from my_utils import load_dataframes, pop_prefixed_kwargs, str2bool, load_bcg_catalog, plot_optical
+from xray_pipeline.process_redshifts import velocity_dispersion, plot_stacked_velocity_histograms, process_redshifts
+from xray_pipeline.xray_plotting import plot_redshift_overlay, make_plots
+
+
 # from run_cmd_pipeline import run_full_pipeline
 
 import scipy.stats
@@ -3474,8 +3476,8 @@ def analyze_cluster(
 
     # if run_pipeline:
     #     run_full_pipeline(cluster, manual_list=manual_list,save_plots=save_plots, show_plots=show_plots)
-    #     process_redshifts(cluster, save_plots=save_plots, show_plots=show_plots)
-    #     make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
+    process_redshifts(cluster, save_plots=save_plots, show_plots=show_plots)
+    make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
 
     spec_df, phot_df, bcg_df = load_dataframes(cluster)
 
