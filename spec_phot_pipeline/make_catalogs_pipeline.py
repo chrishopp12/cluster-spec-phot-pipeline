@@ -968,6 +968,95 @@ def export_redshift_table(
     print(f"Machine-readable table written to {cluster.redshift_path}/redshifts_table.dat")
 
 
+def export_new_redshift_table(
+        cluster: Cluster,
+        new_spectroscopy_df: pd.DataFrame,
+        *,
+        save_tex: bool = True,
+        print_tex: bool = False,
+    ) -> None:
+    """
+    Generate a LaTeX deluxetable (first 5 rows) and a machine-readable ASCII table
+    for newly obtained spectroscopic redshifts. The table omits source information
+    and includes the cluster identifier as a column.
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object containing metadata and output paths.
+    new_spectroscopy_df : pd.DataFrame
+        DataFrame containing newly obtained spectroscopic redshifts.
+    save_tex : bool
+        If True, save to <folder>/new_redshifts_table.tex.
+    print_tex : bool
+        If True, print the LaTeX string to the console.
+    """
+
+    # Clean column names
+    new_spectroscopy_df = new_spectroscopy_df.rename(
+        columns={c: c.strip() for c in new_spectroscopy_df.columns}
+    )
+
+    # Ensure expected first columns
+    expected = [RA_COL, DEC_COL, Z_COL, SIGMA_Z_COL]
+    if list(new_spectroscopy_df.columns[:4]) != expected:
+        new_spectroscopy_df = new_spectroscopy_df.rename(
+            columns=dict(zip(new_spectroscopy_df.columns[:4], expected))
+        )
+
+    # clean_id = cluster.name.replace(" ", "")
+    clean_id = cluster.name
+
+    header = (
+        "\\begin{deluxetable}{ccccc}\n"
+        f"\\tablecaption{{{clean_id} New Spectroscopic Redshifts}}"
+        f"\\label{{tab:{clean_id}_new_redshifts}}\n"
+        "\\tablehead{\n"
+        "  \\colhead{Cluster} & \\colhead{RA [deg]} & "
+        "\\colhead{Dec [deg]} & \\colhead{Redshift} & "
+        "\\colhead{Error} \\\\\n"
+        "}\n"
+        "\\centering\n"
+        "\\startdata\n"
+    )
+
+    body_lines = []
+    for _, row in new_spectroscopy_df.head(5).iterrows():
+        ra = f"{row[RA_COL]:.5f}"
+        dec = f"{row[DEC_COL]:.5f}"
+        z = f"{row[Z_COL]:.5f}"
+
+        sigma = row[SIGMA_Z_COL]
+        sigma_str = "" if (sigma == 0.0) else f"{sigma:.1e}"
+
+        body_lines.append(
+            f"{clean_id} & {ra} & {dec} & {z} & {sigma_str} \\\\ \\hline"
+        )
+
+    footer = "\\enddata\n\\end{deluxetable}"
+
+    latex_str = header + "\n".join(body_lines) + "\n" + footer
+
+    cluster_path_name = cluster.identifier.replace(" ", "")
+    path = os.path.join(cluster.redshift_path, f"{cluster_path_name}_new_redshifts_table.tex")
+    emit_latex(
+        latex_str,
+        save_tex=save_tex,
+        print_tex=print_tex,
+        save_path=path,
+    )
+
+    # Machine-readable table (add cluster column explicitly)
+    machine_df = new_spectroscopy_df.copy()
+    machine_df.insert(0, "Cluster", clean_id)
+    machine_df = machine_df.drop(columns=[SPEC_SOURCE_COL], errors="ignore")  # Omit source column for new redshifts
+
+    out_path = os.path.join(cluster.redshift_path, f"{cluster_path_name}_new_redshifts_table.dat")
+    machine_df.to_csv(out_path, sep="\t", index=False)
+
+    print(f"Machine-readable table written to {out_path}")
+
+
 def print_bcg_deluxetable(
         cluster: Cluster,
         bcg_df: pd.DataFrame,
@@ -1121,6 +1210,7 @@ def build_redshift_catalog(
 
     print_bcg_deluxetable(cluster, bcg_df, mag_col='rmag', save_tex=save_tex, print_tex=print_tex)
     export_redshift_table(cluster, combined_spec_df, save_tex=save_tex, print_tex=print_tex)
+    export_new_redshift_table(cluster, new_spectroscopy_df, save_tex=save_tex, print_tex=print_tex)
 
 
 
