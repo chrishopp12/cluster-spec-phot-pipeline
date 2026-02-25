@@ -575,13 +575,13 @@ def make_xray_plots(cluster, optical_image_file, show_plots=False, save_plots=Tr
     kernel_std_xray = arcsec_to_pixel_std(psf_arcsec, wcs_xray)
  
     filled_raw = fill_holes(raw_xray, exact=True)
-    smoothed_raw = smoothing(filled_raw, kernel_std_xray.value)
+    smoothed_raw = smoothing(filled_raw, kernel_std_xray)
 
     # Reprojected onto optical frame
     reprojected_raw, _ = reproject_interp((raw_xray, wcs_xray), wcs_optical, shape_out=optical_image_data.shape[1:])
     reprojected_filled, _ = reproject_interp((filled_raw, wcs_xray), wcs_optical, shape_out=optical_image_data.shape[1:])
     kernel_std_optical = arcsec_to_pixel_std(psf_arcsec, wcs_optical)
-    reprojected_smoothed = smoothing(reprojected_filled, kernel_std_optical.value)
+    reprojected_smoothed = smoothing(reprojected_filled, kernel_std_optical)
 
 
     # -- Plot single images --
@@ -684,6 +684,7 @@ def make_xray_plots(cluster, optical_image_file, show_plots=False, save_plots=Tr
 
     plt.tight_layout()
     finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="xray_reprojected.pdf")
+
 
 def plot_redshift_overlay(
     optical_image_file,
@@ -1079,13 +1080,13 @@ def gaussian_grad_magnitude(
         (xray_data, wcs_xray), wcs_optical, shape_out=optical_image_data.shape[1:])
 
     kernel_std_optical = arcsec_to_pixel_std(psf_arcsec, wcs_optical)
-    xray_smoothed = gaussian_filter(xray_reprojected, sigma=kernel_std_optical.value)
+    xray_smoothed = gaussian_filter(xray_reprojected, sigma=kernel_std_optical)
 
-    gradient_magnitude = gaussian_gradient_magnitude(xray_smoothed, sigma=kernel_std_optical.value)
+    gradient_magnitude = gaussian_gradient_magnitude(xray_smoothed, sigma=kernel_std_optical)
     gradient_magnitude = gradient_magnitude / pixscale_optical.value
 
-    fine = gaussian_filter(xray_reprojected, sigma=kernel_std_optical.value)
-    broad = gaussian_filter(xray_reprojected, sigma=5 * kernel_std_optical.value)
+    fine = gaussian_filter(xray_reprojected, sigma=kernel_std_optical)
+    broad = gaussian_filter(xray_reprojected, sigma=5 * kernel_std_optical)
     unsharp = fine - broad
 
     # plot_xray_3d(xray_smoothed, wcs_optical, step=4)
@@ -1311,7 +1312,7 @@ def make_plots(
 
     # --- File names ---
     xray_file = cluster.xray_file
-    phot_file = cluster.phot_file()
+    phot_file = cluster.get_phot_file()
     bcg_file = cluster.bcg_file
     spec_file = cluster.spec_file
 
