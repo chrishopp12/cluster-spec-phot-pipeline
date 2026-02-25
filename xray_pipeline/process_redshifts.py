@@ -381,7 +381,7 @@ def make_stats_table(
 
         if N == 0:
             print(f"Skipping subcluster {i+1} (no data in range).")
-            stats_list.append([i + 1, z_low, z_high, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, "No data"])
+            stats_list.append([i + 1, z_low, z_high, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, "No data"])
             stats_values.append(None)
             continue
 
@@ -402,7 +402,6 @@ def make_stats_table(
         # AD stat + p-value
         ad_stat, ad_p_value = _ad_pvalue_normality(z_subset)
 
-        # Keep your existing "Anderson Level" via SciPy critical values (if possible)
         if N >= 3:
             anderson_res = scipy.stats.anderson(z_subset, dist="norm")
             sig_levels = anderson_res.significance_level
