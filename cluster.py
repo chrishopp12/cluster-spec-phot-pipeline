@@ -26,6 +26,9 @@ from __future__ import annotations
 import os
 import re
 import csv
+import io
+import requests
+from astropy.io import fits
 
 import pandas as pd
 import numpy as np
@@ -346,6 +349,59 @@ class Cluster:
         return get_redseq_filename(self.photometry_path, survey_eff, color_type_eff)
 
 
+
+    def hips2fits_query_with_mirror(
+        self,
+        *,
+        hips: str,
+        ra_deg: float,
+        dec_deg: float,
+        fov_deg: float,
+        width: int = 802,
+        height: int = 800,
+        projection: str = "TAN",
+        timeout: int = 120,
+    ) -> fits.HDUList:
+        """
+        Return the same FITS-like object as hips2fits.query(), but fall back to the
+        CDS mirror endpoint if the primary service is down.
+        """
+        # 1) normal astroquery path
+        try:
+            return hips2fits.query(
+                hips=hips,
+                width=width,
+                height=height,
+                ra=float(ra_deg),
+                dec=float(dec_deg),
+                fov=Angle(fov_deg, "deg"),
+                projection=projection,
+                format="fits",
+            )
+        except Exception as e_primary:
+            # 2) mirror endpoint (direct HTTP)
+            mirror_url = "https://alaskybis.cds.unistra.fr/hips-image-services/hips2fits"
+            params = {
+                "hips": hips,
+                "ra": float(ra_deg),
+                "dec": float(dec_deg),
+                "fov": float(fov_deg),
+                "width": int(width),
+                "height": int(height),
+                "projection": projection,
+                "format": "fits",
+            }
+            r = requests.get(mirror_url, params=params, timeout=timeout)
+
+            # If mirror also fails, re-raise the original error
+            if r.status_code != 200:
+                raise RuntimeError(
+                    f"HiPS2FITS failed on primary and mirror. "
+                    f"Primary error: {e_primary}. Mirror status: {r.status_code}."
+                )
+
+            return fits.open(io.BytesIO(r.content))
+
     def get_optical_image(
             self,
             *,
@@ -403,6 +459,7 @@ class Cluster:
         # 1. Check for cached file variants
         for fv, rv, dv in self._file_variants(fov_eff, ra_offset_eff, dec_offset_eff):
             fits_path = os.path.join(self.photometry_path, f"optical_image_{fv}_{rv}_{dv}.fits")
+            print(f"Checking for cached file: {fits_path} ...")
             if is_fits_valid(fits_path):
                 if verbose:
                     print(f"Found cached optical image: {fits_path}")
@@ -412,16 +469,19 @@ class Cluster:
         for survey in surveys:
             try:
                 print(f"Querying {survey['name']}...")
-                result = hips2fits.query(
-                    hips=survey['hips'],
+                ra_deg = float((self.coords.ra + ra_offset_deg * u.deg).deg)
+                dec_deg = float((self.coords.dec + dec_offset_deg * u.deg).deg)
+
+                result = self.hips2fits_query_with_mirror(
+                    hips=survey["hips"],
+                    ra_deg=ra_deg,
+                    dec_deg=dec_deg,
+                    fov_deg=float(fov_deg),
                     width=802,
                     height=800,
-                    ra=self.coords.ra + ra_offset_deg * u.deg,
-                    dec=self.coords.dec + dec_offset_deg * u.deg,
-                    fov=Angle(fov_deg, 'deg'),
-                    projection='TAN',
-                    format='fits'
+                    projection="TAN",
                 )
+
                 survey_path = os.path.join(self.photometry_path, f"{survey['name']}_optical_image_{fov_eff}_{ra_offset_eff}_{dec_offset_eff}.fits")
                 fits_path = os.path.join(self.photometry_path, f"optical_image_{fov_eff}_{ra_offset_eff}_{dec_offset_eff}.fits")
                 result.writeto(survey_path, overwrite=True)
