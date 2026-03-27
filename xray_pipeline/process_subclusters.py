@@ -3554,7 +3554,7 @@ def analyze_cluster(
                                         save_plots=True,
                                         save_path=save_file
         )
-        quit()
+        return
 
     clean_id = cluster.identifier.replace(" ", "_")
 
