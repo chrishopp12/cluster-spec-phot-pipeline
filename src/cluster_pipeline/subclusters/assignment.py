@@ -21,6 +21,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 
 from cluster_pipeline.models.region import Region
+from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.subclusters.geometry import (
     get_bisectors,
     define_bbox,
@@ -105,42 +106,34 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
             bisectors=bisectors,
         )
 
-   # --- Optional: Diagnostic Plotting --- #This plot is a pain, but can be a good first-look
+    # --- Optional: Diagnostic Plotting ---
     if plot:
         import matplotlib.pyplot as plt
         from matplotlib.ticker import MultipleLocator
+        from cluster_pipeline.plotting.arcs import add_region_fill_clipped_to_signature
 
         fig, ax = plt.subplots(figsize=(6, 6))
 
-        # Plot BCG markers
         for i, c in enumerate(centers):
             ax.plot(c.ra.deg, c.dec.deg, 'k*', markersize=10, label=f"BCG {i+1}")
             ax.text(c.ra.deg, c.dec.deg, f"BCG {i+1}", fontsize=9, va='bottom', ha='left')
 
-        # Set limits early so fill polygons use the same view
         ra_vals = np.array([c.ra.deg for c in centers])
         dec_vals = np.array([c.dec.deg for c in centers])
-        ra_min, ra_max = ra_vals.min() - margin, ra_vals.max() + margin
-        dec_min, dec_max = dec_vals.min() - margin, dec_vals.max() + margin
-        ax.set_xlim(ra_min, ra_max)
-        ax.set_ylim(dec_min, dec_max)
+        pad = margin
+        ax.set_xlim(ra_vals.min() - pad, ra_vals.max() + pad)
+        ax.set_ylim(dec_vals.min() - pad, dec_vals.max() + pad)
 
-        # Plot segments and shaded regions
         for bcg_idx, segs in bcg_regions.items():
-            if verbose:
-                print(f"BCG {bcg_idx}: {len(segs)} segments")
-            add_region_fill_clipped_to_signature(ax, segs, color=colors[bcg_idx],
-                                                bcg_sig=bcg_signatures[bcg_idx],
-                                                bisectors=bisectors)
+            add_region_fill_clipped_to_signature(
+                ax, segs, color=colors[bcg_idx],
+                bcg_sig=bcg_signatures[bcg_idx], bisectors=bisectors,
+            )
 
-        # Lock limits again (prevent tightening from patch rendering)
-        ax.set_xlim(ra_min, ra_max)
-        ax.set_ylim(dec_min, dec_max)
         ax.xaxis.set_major_locator(MultipleLocator(0.05))
         ax.invert_xaxis()
         ax.set_xlabel("R.A.")
         ax.set_ylabel("Decl.")
-
         plt.tight_layout()
         plt.show()
     if verbose:
@@ -178,7 +171,7 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
 
     centers = [sub.region_center for sub in subclusters]
     n = len(centers)
-    galaxy_coords = SkyCoord(ra=galaxies_df['RA'].values * u.deg, dec=galaxies_df['Dec'].values * u.deg)
+    galaxy_coords = make_skycoord(galaxies_df['RA'].values, galaxies_df['Dec'].values)
 
     df_valid = galaxies_df.copy()
 
@@ -203,44 +196,39 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
 
         print(f"Assigned {np.sum(matches)} galaxies to region {region_id}")
 
-    # Another mediocre plot, but good for a first look
+    # Diagnostic plot: galaxies colored by region assignment
     if plot:
         import matplotlib.pyplot as plt
         from matplotlib.ticker import MultipleLocator
+        from astropy.coordinates import CartesianRepresentation
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(df_valid['RA'], df_valid['Dec'], c=region_ids, cmap='tab10', s=20, label='Galaxies')
+        ax.scatter(df_valid['RA'], df_valid['Dec'], c=region_ids, cmap='tab10', s=20)
         ax.scatter([c.ra.deg for c in centers], [c.dec.deg for c in centers],
-                c='black', s=100, marker='x', label='Centers')
+                   c='black', s=100, marker='x')
 
+        # Draw bisector great-circle arcs
         for b in bisectors:
             anchor_vec = b['mid'].cartesian.xyz.value
             pole = b['pole']
             tangent = np.cross(pole, anchor_vec)
             tangent /= np.linalg.norm(tangent)
-            # Parameterize great circle: anchor * cos(theta) + tangent * sin(theta)
             thetas = np.linspace(-0.5, 0.5, 200) * np.pi
             pts_xyz = (anchor_vec[:, None] * np.cos(thetas) +
-                    tangent[:, None] * np.sin(thetas)).T
-
-            pts_gc = SkyCoord(x=pts_xyz[:,0], y=pts_xyz[:,1], z=pts_xyz[:,2],
-                            representation_type='cartesian', frame='icrs')
-            pts_gc_sph = pts_gc.represent_as('spherical')
-            ra = pts_gc_sph.lon.deg   # longitude (RA in deg)
-            dec = pts_gc_sph.lat.deg  # latitude (Dec in deg)
-            ax.plot(ra, dec, 'k--', lw=1, alpha=0.6)
+                       tangent[:, None] * np.sin(thetas)).T
+            pts = SkyCoord(CartesianRepresentation(
+                pts_xyz[:, 0], pts_xyz[:, 1], pts_xyz[:, 2]
+            ), frame='icrs')
+            ax.plot(pts.ra.deg, pts.dec.deg, 'k--', lw=1, alpha=0.6)
 
         ra_vals = np.array([c.ra.deg for c in centers])
         dec_vals = np.array([c.dec.deg for c in centers])
-        margin = 0.05
-        ax.set_xlim(ra_vals.min() - margin, ra_vals.max() + margin)
-        ax.set_ylim(dec_vals.min() - margin, dec_vals.max() + margin)
-
-        ax.set_xlabel("RA [deg]")
+        ax.set_xlim(ra_vals.min() - 0.05, ra_vals.max() + 0.05)
+        ax.set_ylim(dec_vals.min() - 0.05, dec_vals.max() + 0.05)
         ax.xaxis.set_major_locator(MultipleLocator(0.05))
         ax.invert_xaxis()
+        ax.set_xlabel("RA [deg]")
         ax.set_ylabel("Dec [deg]")
-        ax.set_aspect('equal', adjustable='datalim')
         plt.tight_layout()
         plt.show()
 
@@ -279,7 +267,7 @@ def filter_members_by_config(member_groups, subclusters, spec=True):
         zmin, zmax = subclusters[i].z_range
         max_radius = subclusters[i].radius_mpc
 
-        coords = SkyCoord(ra=df['RA'].values * u.deg, dec=df['Dec'].values * u.deg)
+        coords = make_skycoord(df['RA'].values, df['Dec'].values)
         sep = coords.separation(centers[i]).arcmin
 
         if spec and 'z' in df.columns:
