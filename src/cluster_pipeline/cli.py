@@ -40,7 +40,7 @@ def main():
 @click.option("--base-path", type=click.Path(exists=True, file_okay=False),
               default=None, help="Base directory for cluster data.")
 @click.option("--stages", multiple=True,
-              type=click.Choice(["spec", "phot", "matching", "redseq", "xray"], case_sensitive=False),
+              type=click.Choice(["spec", "phot", "matching", "redseq", "subclusters", "xray"], case_sensitive=False),
               help="Pipeline stages to run. Default: spec + phot + matching + redseq.")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
 @click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures.")
@@ -145,10 +145,11 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         click.echo("\n--- Stage 4: Red Sequence ---")
         members_df = run_redsequence(cluster)
 
-    # --- Stage 5-8: X-ray pipeline ---
-    if "xray" in stages:
+    # --- Subcluster building + assignment + stats + plots ---
+    subcluster_list = None
+    if "subclusters" in stages or "xray" in stages:
         from cluster_pipeline.subclusters.builder import build_subclusters
-        from cluster_pipeline.pipelines.xray import run_xray
+        from cluster_pipeline.pipelines.xray import run_subcluster_analysis
 
         click.echo("\n--- Stage 5: Subcluster Building ---")
 
@@ -164,9 +165,16 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
 
         subcluster_list = build_subclusters(cluster, bcgs=bcgs, config=cfg)
 
-        click.echo("\n--- Stages 6-8: X-ray Analysis ---")
-        run_xray(cluster, subclusters=subcluster_list,
-                 save_plots=save_plots, show_plots=show_plots)
+        click.echo("\n--- Stages 6-7: Subcluster Analysis ---")
+        run_subcluster_analysis(cluster, subclusters=subcluster_list,
+                                save_plots=save_plots, show_plots=show_plots)
+
+    # --- X-ray processing (independent of subclusters) ---
+    if "xray" in stages:
+        from cluster_pipeline.pipelines.xray import run_xray_imaging
+
+        click.echo("\n--- Stage 8: X-ray Processing ---")
+        run_xray_imaging(cluster, save_plots=save_plots, show_plots=show_plots)
 
     # --- Persist config if --save ---
     if save:

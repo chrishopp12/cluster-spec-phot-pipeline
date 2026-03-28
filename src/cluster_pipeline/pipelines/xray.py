@@ -68,29 +68,24 @@ from cluster_pipeline.plotting.xray import plot_redshift_overlay, make_plots
 
 
 # ====================================================================
-# Clean entry point
+# Clean entry points
 # ====================================================================
 
-def run_xray(
+def run_xray_imaging(
     cluster: Cluster,
-    subclusters: list | None = None,
     *,
     save_plots: bool = True,
     show_plots: bool = False,
 ) -> None:
-    """Run X-ray processing and subcluster analysis for a cluster.
+    """Run X-ray image processing and redshift analysis.
 
-    This is the clean entry point for the X-ray pipeline stage.
-    Gracefully skips X-ray image processing if no FITS data exists,
-    but still runs subcluster analysis (redshift-based).
+    Handles redshift processing (GMM fitting) and X-ray image visualization.
+    Independent of subcluster analysis — does not need subclusters.
 
     Parameters
     ----------
     cluster : Cluster
         Cluster object with paths and metadata.
-    subclusters : list[Subcluster] or None
-        Subcluster objects from Stage 5. If None, attempts to build
-        from config.
     save_plots : bool
         Save generated figures. [default: True]
     show_plots : bool
@@ -98,16 +93,11 @@ def run_xray(
 
     Notes
     -----
+    - Redshift processing always runs (GMM fitting, velocity dispersions).
     - X-ray FITS file expected at ``cluster.xray_file``.
-    - If no X-ray data, skips image processing and contour generation
-      but still runs redshift analysis and subcluster statistics.
+    - If no X-ray data, skips image processing gracefully.
     """
     has_xray = os.path.isfile(cluster.xray_file)
-
-    if has_xray:
-        print(f"\nX-ray data found: {cluster.xray_file}")
-    else:
-        print(f"\nNo X-ray data at {cluster.xray_file} — skipping X-ray image processing")
 
     # Redshift processing (independent of X-ray)
     print("\n--- Redshift processing ---")
@@ -115,9 +105,36 @@ def run_xray(
 
     # X-ray image processing (only if FITS exists)
     if has_xray:
-        print("\n--- X-ray image processing ---")
+        print(f"\n--- X-ray image processing ---")
+        print(f"  X-ray data: {cluster.xray_file}")
         make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
+    else:
+        print(f"\nNo X-ray data at {cluster.xray_file} — skipping image processing")
 
+
+def run_subcluster_analysis(
+    cluster: Cluster,
+    subclusters: list | None = None,
+    *,
+    save_plots: bool = True,
+    show_plots: bool = False,
+) -> None:
+    """Run subcluster member assignment, statistics, and plotting.
+
+    Independent of X-ray image processing. Requires at least 2 subclusters
+    for bisector-based region assignment.
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object with paths and metadata.
+    subclusters : list[Subcluster] or None
+        Subcluster objects from Stage 5.
+    save_plots : bool
+        Save generated figures. [default: True]
+    show_plots : bool
+        Display figures interactively. [default: False]
+    """
     # Subcluster analysis
     if subclusters is not None and len(subclusters) >= 2:
         print(f"\n--- Subcluster analysis ({len(subclusters)} subclusters) ---")
