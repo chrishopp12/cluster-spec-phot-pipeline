@@ -332,6 +332,9 @@ def run_subcluster_analysis(
             print(f"    Redshift histogram heatmap FAILED: {e}")
 
         try:
+            # Filename includes subcluster IDs so different runs don't overwrite
+            sub_ids = "_".join(str(sub.bcg_id) for sub in subclusters)
+            hist_file = os.path.join(save_path, f"subcluster_histograms_{sub_ids}.pdf")
             plot_subcluster_regions_and_histograms(
                 cluster=cluster,
                 subclusters=subclusters,
@@ -340,7 +343,7 @@ def run_subcluster_analysis(
                 **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
-                save_path=save_path,
+                save_path=hist_file,
             )
             print("    Regions + histograms: OK")
         except Exception as e:
