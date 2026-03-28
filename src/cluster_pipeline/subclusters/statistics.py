@@ -1,8 +1,33 @@
-"""Statistical analysis for subclusters: GMM fitting, velocity dispersions, normality tests."""
+#!/usr/bin/env python3
+"""
+statistics.py
+
+Stage 7: Subcluster Statistics and Redshift Analysis
+---------------------------------------------------------
+
+Statistical analysis for subclusters and cluster redshift distributions:
+GMM fitting, velocity dispersions, normality tests, and group analysis.
+
+Produces
+--------
+- Per-subcluster velocity dispersions and mean redshifts
+- KS and Anderson-Darling normality tests per GMM component
+- GMM redshift histograms with inset subcluster panels
+- Stacked velocity histograms
+- LaTeX deluxetable of subcluster properties
+- Pairwise BCG-BCG velocity-difference CSV
+
+Requirements
+------------
+- Combined spectroscopic redshift catalog (combined_redshifts.csv)
+- BCGs.csv with columns: BCG_priority, z, sigma_z
+- Subcluster objects with populated spec_members DataFrames
+"""
 
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -23,6 +48,9 @@ import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
 from cluster_pipeline.io.catalogs import load_bcg_catalog
+
+if TYPE_CHECKING:
+    from cluster_pipeline.models.subcluster import Subcluster
 
 
 def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05):
@@ -638,16 +666,38 @@ def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_col
     finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="velocity_histograms.pdf")
 
 
-def analyze_group(spec_groups):
-    z_data = []
-    vel_data = []
-    for i, spec_members in enumerate(spec_groups):
-        z_vals = spec_members['z'].values
+def analyze_group(subclusters: list) -> dict:
+    """Compute velocity dispersion for each subcluster's spectroscopic members.
+
+    Parameters
+    ----------
+    subclusters : list[Subcluster]
+        Subclusters with .spec_members populated.
+
+    Returns
+    -------
+    dict
+        Per-subcluster stats: {label: {"z_mean": ..., "sigma_v": ..., "n_spec": ...}}
+    """
+    results = {}
+    for sub in subclusters:
+        if sub.spec_members is None or len(sub.spec_members) == 0:
+            print(f"Subcluster {sub.label}: no spectroscopic members, skipping.")
+            continue
+        z_vals = sub.spec_members['z'].values
         z_mean, sigma_v, velocities = velocity_dispersion(z_vals)
-        vel_data.append((velocities, z_mean, sigma_v))
-        z_data.append(z_vals)
-        print(f"Subcluster {i+1}: N={len(spec_members)} | $\\bar{{z}}$ = {z_mean:.5f} | $\\sigma_v$ = {sigma_v:.1f} km/s")
-    return z_data, vel_data
+        results[sub.label] = {
+            "z_mean": z_mean,
+            "sigma_v": sigma_v,
+            "n_spec": len(z_vals),
+            "velocities": velocities,
+            "z_vals": z_vals,
+        }
+        print(
+            f"Subcluster {sub.label}: N={len(z_vals)} | "
+            f"$\\bar{{z}}$ = {z_mean:.5f} | $\\sigma_v$ = {sigma_v:.1f} km/s"
+        )
+    return results
 
 
 def los_velocity_diff(z1, z2, sig_z1=None, sig_z2=None):
@@ -682,60 +732,41 @@ def los_velocity_diff(z1, z2, sig_z1=None, sig_z2=None):
     return dv_kms, dv_err_kms, z_mean
 
 
-def bcg_z_by_subcluster(cluster, subcluster_configs):
-    """
-    Build arrays aligned to subcluster order for BCG redshifts and uncertainties.
+def bcg_z_by_subcluster(subclusters: list) -> tuple[list, list]:
+    """Extract BCG redshifts aligned to subcluster order.
 
     Parameters
     ----------
-    subcluster_configs : list[dict] or dict[int->dict]
-        Each config must include 'bcg_id'.
-    bcgs_dict : dict
-        Output from load_bcg_catalog().
+    subclusters : list[Subcluster]
 
     Returns
     -------
-    z_list : list[float or None]
-    zerr_list : list[float or None]
+    bcg_zs : list[float | None]
+    bcg_z_errs : list[float | None]
     """
-    bcgs_dict = load_bcg_catalog(cluster)
-
-    # Normalize to list ordered by subcluster index (1..N)
-    if isinstance(subcluster_configs, dict):
-        # assume keys are bcg_id or 1..N; keep insertion order if already a dict
-        ordered_cfgs = [subcluster_configs[k] for k in sorted(subcluster_configs.keys())]
-    else:
-        ordered_cfgs = list(subcluster_configs)
-
-    z_list, zerr_list = [], []
-    for cfg in ordered_cfgs:
-        bid = int(cfg["bcg_id"])
-        rec = bcgs_dict.get(bid)
-        if rec is None:
-            z_list.append(None)
-            zerr_list.append(None)
-        else:
-            z_list.append(rec["z"])
-            zerr_list.append(rec["z_err"])
-    return z_list, zerr_list
+    bcg_zs = []
+    bcg_z_errs = []
+    for sub in subclusters:
+        bcg = sub.primary_bcg
+        bcg_zs.append(bcg.z)
+        bcg_z_errs.append(bcg.sigma_z)
+    return bcg_zs, bcg_z_errs
 
 
 def build_subcluster_summary(
     cluster,
-    configs,
-    spec_groups,
+    subclusters: list,
     update_csv=True,
 ):
     """
-    Summarize subcluster kinematics and BCG offsets with minimal I/O logic.
+    Summarize subcluster kinematics and BCG offsets.
 
     This function:
-      - Reads BCGs.csv from cluster.bcg_file (requires columns: BCG_priority, z, sigma_z)
-      - Maps each subcluster's bcg_id to the BCG row where BCG_priority == bcg_id
-      - Computes subcluster stats via your velocity_dispersion(zs)
-      - Computes BCG delta v relative to the subcluster mean and its uncertainty from sigma_z
-      - Writes a LaTeX deluxetable (.tex) into cluster.cluster_path
-      - Writes pairwise BCG-BCG delta v CSV (using z and sigma_z) into cluster.cluster_path
+      - Uses Subcluster objects for BCG redshifts and identifiers
+      - Computes subcluster stats via velocity_dispersion on spec_members
+      - Computes BCG delta v relative to the subcluster mean and its uncertainty
+      - Writes a LaTeX deluxetable (.tex) into cluster.tables_path
+      - Writes pairwise BCG-BCG delta v CSV into cluster.tables_path
       - Optionally updates subclusters.csv with bcg_dv_kms and bcg_dv_err_kms
 
     Parameters
@@ -743,14 +774,13 @@ def build_subcluster_summary(
     cluster : Cluster
         Cluster object with:
           - bcg_file : str  -> path to BCGs.csv
-          - cluster_path : str -> output directory
+          - tables_path : str -> output directory for LaTeX/CSV
+          - cluster_path : str -> cluster data directory
           - identifier : str   -> e.g., "RMJ 2135"
+          - spec_file : str -> path to combined spec catalog
           - subcluster_file : str (optional) -> path to subclusters.csv for updates
-    configs : list[dict] or dict
-        Each subcluster config must include 'bcg_id'. If a dict is provided,
-        rows are ordered by sorted key.
-    spec_groups : list[array-like]
-        Per-subcluster arrays of member galaxy redshifts.
+    subclusters : list[Subcluster]
+        Subcluster objects with spec_members populated.
     update_csv : bool
         If True and cluster.subcluster_file exists, add/overwrite bcg_dv_kms and
         bcg_dv_err_kms columns.
@@ -763,7 +793,7 @@ def build_subcluster_summary(
           'pairs_csv': str,
           'bcg_dv_kms': list[float or None],
           'bcg_dv_err_kms': list[float or None],
-          'vel_data': list[tuple],  # (velocities, z_mean, sigma_v) per subcluster
+          'group_stats': dict,  # from analyze_group
         }
 
     Notes
@@ -780,11 +810,6 @@ def build_subcluster_summary(
     # ------------------------
     # Local helpers
     # ------------------------
-    def _ordered(cfgs):
-        if isinstance(cfgs, dict):
-            return [cfgs[k] for k in sorted(cfgs.keys())]
-        return list(cfgs)
-
     def _los_dv(z1, z2):
         zbar = (z1 + z2)/2
         return c.to('km/s').value * (z2 - z1) / (1.0 + zbar), zbar
@@ -794,7 +819,7 @@ def build_subcluster_summary(
         return None if sigmaz is None or (isinstance(sigmaz, float) and np.isnan(sigmaz)) \
             else c.to('km/s').value * sigmaz / (1.0 + z_ref)
 
-    def _write_deluxetable_tex(cluster_name, vel_data, z_lists, bcg_z_list, bcg_id_str, cluster_props, out_path):
+    def _write_deluxetable_tex(cluster_name, group_stats, bcg_z_list, bcg_id_str, cluster_props, out_path):
 
         lines = []
         lines.append(r"\begin{deluxetable}{cccccc}")
@@ -809,10 +834,16 @@ def build_subcluster_summary(
         lines.append(r"\centering")
         lines.append(r"\startdata")
         lines.append(f"All & {cluster_props[2]} & --- & --- & {cluster_props[0]:.4f} & {round(cluster_props[1], -1):.0f} \\\\")
-        for i, zs in enumerate(z_lists):
-            nmem = len(zs)
-            _, z_mean, sigma_v = vel_data[i]
-            line = f"{i+1} & {nmem} & {bcg_id_str[i]} & {bcg_z_list[i]:.3f} & {z_mean:.4f} & {round(sigma_v, -1):.0f}  \\\\"
+        for i, sub in enumerate(subclusters):
+            stats = group_stats.get(sub.label)
+            if stats is None:
+                continue
+            nmem = stats["n_spec"]
+            z_mean = stats["z_mean"]
+            sigma_v = stats["sigma_v"]
+            bcg_z = bcg_z_list[i]
+            bcg_z_str = f"{bcg_z:.3f}" if bcg_z is not None else "---"
+            line = f"{bcg_id_str[i]} & {nmem} & {sub.label} & {bcg_z_str} & {z_mean:.4f} & {round(sigma_v, -1):.0f}  \\\\"
             lines.append(line)
 
         lines.append(r"\enddata}")
@@ -894,29 +925,27 @@ def build_subcluster_summary(
     if "sigma_z" not in bcg_df.columns:
         bcg_df["sigma_z"] = np.nan
 
-    # Map: bcg_id (from subcluster_configs) -> (z, sigma_z) via BCG_priority
-    cfgs = _ordered(configs)
-    # Ensure integer compare for priorities
-    bcg_df["BCG_priority"] = bcg_df["BCG_priority"].astype(int)
-    pri_to_vals = {
-        int(row.BCG_priority): (float(row.z), (None if pd.isna(row.sigma_z) else float(row.sigma_z)))
-        for _, row in bcg_df.iterrows()
-    }
+    # Build BCG info from Subcluster objects
+    bcg_z_list = []
+    bcg_sigz_list = []
+    bcg_id_str = []
+    for sub in subclusters:
+        bcg_id_str.append(str(sub.bcg_id))
+        bcg_z_list.append(sub.primary_bcg.z)
+        bcg_sigz_list.append(sub.primary_bcg.sigma_z)
 
-    bcg_z_list, bcg_sigz_list, bcg_id_str = [], [], []
-    for cfg in cfgs:
-        bcg_id_str.append(str(cfg.get("bcg_id", "---")))
-        bid = int(cfg["bcg_id"])
-        z_val, sig_val = pri_to_vals.get(bid, (None, None))
-        bcg_z_list.append(z_val)
-        bcg_sigz_list.append(sig_val)
-
-    # Compute subcluster stats with your function
-    z_data, vel_data = analyze_group(spec_groups)
+    # Compute subcluster stats
+    group_stats = analyze_group(subclusters)
 
     # Compute BCG delta v and sigma per subcluster
     bcg_dv_kms, bcg_dv_err_kms = [], []
-    for i, (_, z_mean, _) in enumerate(vel_data):
+    for i, sub in enumerate(subclusters):
+        stats = group_stats.get(sub.label)
+        if stats is None:
+            bcg_dv_kms.append(None)
+            bcg_dv_err_kms.append(None)
+            continue
+        z_mean = stats["z_mean"]
         z_bcg = bcg_z_list[i]
         if z_bcg is None or (isinstance(z_bcg, float) and np.isnan(z_bcg)):
             bcg_dv_kms.append(None)
@@ -927,37 +956,31 @@ def build_subcluster_summary(
         bcg_dv_kms.append(dv)
         bcg_dv_err_kms.append(dv_err)
 
-        # dv_bcg = c.to('km/s').value * (z_bcg - z_mean) / (1.0 + z_mean)
-        # sigz_bcg = bcg_sigz_list[i]
-        # dv_err = _los_dv_err_from_sigmaz(sigz_bcg, z_mean)
-        # bcg_col = rf"${dv_bcg:+.0f}$" if dv_err is None else rf"${dv_bcg:+.0f}\ \pm\ {dv_err:.0f}$"
-
     # Write deluxetable
-    tex_path = os.path.join(cluster.cluster_path, f"{cluster.identifier.replace(' ', '')}_subclusters.tex")
-    _write_deluxetable_tex(cluster.identifier, vel_data, z_data, bcg_z_list, bcg_id_str, cluster_props, tex_path)
-
-    print_subcluster_deluxetable(spec_groups)
+    tables_path = getattr(cluster, "tables_path", cluster.cluster_path)
+    tex_path = os.path.join(tables_path, f"{cluster.identifier.replace(' ', '')}_subclusters.tex")
+    os.makedirs(tables_path, exist_ok=True)
+    _write_deluxetable_tex(cluster.identifier, group_stats, bcg_z_list, bcg_id_str, cluster_props, tex_path)
 
     # Pairwise BCG-BCG CSV
-    pairs_csv = os.path.join(cluster.cluster_path, "BCG_velocity_pairs.csv")
+    pairs_csv = os.path.join(tables_path, "BCG_velocity_pairs.csv")
     _write_bcg_pairs_csv(bcg_df, pairs_csv)
 
     # Optional: update subclusters.csv in place
     if update_csv and getattr(cluster, "subcluster_file", None) and os.path.exists(cluster.subcluster_file):
         try:
             sdf = pd.read_csv(cluster.subcluster_file)
-            # Try to map by bcg_id if present; else by subcluster index order
+            # Map by bcg_id if present; else by subcluster index order
             if "bcg_id" in sdf.columns:
                 id_to_dv = {}
                 id_to_dverr = {}
-                for i, cfg in enumerate(cfgs):
-                    bid = int(cfg["bcg_id"])
-                    id_to_dv[bid] = bcg_dv_kms[i]
-                    id_to_dverr[bid] = bcg_dv_err_kms[i]
+                for i, sub in enumerate(subclusters):
+                    id_to_dv[sub.bcg_id] = bcg_dv_kms[i]
+                    id_to_dverr[sub.bcg_id] = bcg_dv_err_kms[i]
                 sdf["bcg_dv_kms"] = sdf["bcg_id"].map(id_to_dv)
                 sdf["bcg_dv_err_kms"] = sdf["bcg_id"].map(id_to_dverr)
             else:
-                # Fallback: assume row order corresponds to cfg order
+                # Fallback: assume row order corresponds to subcluster order
                 sdf["bcg_dv_kms"] = pd.Series(bcg_dv_kms[:len(sdf)])
                 sdf["bcg_dv_err_kms"] = pd.Series(bcg_dv_err_kms[:len(sdf)])
             sdf.to_csv(cluster.subcluster_file, index=False)
@@ -969,35 +992,5 @@ def build_subcluster_summary(
         "pairs_csv": pairs_csv,
         "bcg_dv_kms": bcg_dv_kms,
         "bcg_dv_err_kms": bcg_dv_err_kms,
-        "vel_data": vel_data,
+        "group_stats": group_stats,
     }
-
-
-def print_subcluster_deluxetable(spec_groups):
-    """
-    Print a LaTeX deluxetable summarizing subcluster properties.
-
-    Parameters
-    ----------
-    spec_groups : list[array-like]
-        Per-subcluster arrays of member galaxy redshifts.
-    """
-    z_data, vel_data = analyze_group(spec_groups)
-
-    print(r"\begin{deluxetable}{cccc}")
-    print(r"\tablecaption{RMJ0000 Subcluster Properties}\label{tab:RMJ0000_subclusters}")
-    print(r"\tablehead{")
-    print(r"\colhead{Subcluster} & \colhead{N} & \colhead{Mean $z$} & \colhead{$\sigma_v$ [km/s]}")
-    print(r"}")
-    print(r"\centering")
-    print(r"\startdata")
-
-    n_subclusters = len(z_data)
-    for i in range(n_subclusters):
-        sub_num = i + 1
-        num_members = len(z_data[i])
-        _, z_mean, sigma_v = vel_data[i]
-        print(f"{sub_num} & {num_members} & {z_mean:.4f} & {sigma_v:.0f} \\\\")
-
-    print(r"\enddata")
-    print(r"\end{deluxetable}")
