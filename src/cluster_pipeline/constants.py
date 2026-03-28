@@ -45,7 +45,7 @@ DEFAULT_Z_PAD = 0.15  # Padding around cluster redshift for z_min/z_max
 # ------------------------------------
 # Subcluster Defaults
 # ------------------------------------
-DEFAULT_RADIUS_MPC = 2.0  # Subcluster search radius in Mpc
+DEFAULT_RADIUS_MPC = 2.5  # Subcluster search radius in Mpc
 
 DEFAULT_COLORS = [
     "white", "tab:green", "tab:purple", "tab:cyan", "tab:pink",
@@ -63,24 +63,3 @@ DEFAULT_LABELS = [
 DEFAULT_LEGEND_LOC = "upper right"
 DEFAULT_SAVE_PLOTS = True
 DEFAULT_SHOW_PLOTS = False
-
-# ------------------------------------
-# XMM Observation ID → RMJ Name Mapping
-# ------------------------------------
-# Maps XMM OBS_IDs to canonical redMaPPer cluster identifiers.
-# Used by get_cluster_id() to resolve short identifiers.
-CLUSTER_MAP = {
-    "1234567890": "RMJ213518.8+012527.0",
-    "0881900801": "RMJ000343.8+100123.8",
-    "0881901001": "RMJ080135.3+362807.5",
-    "0881901201": "RMJ132724.2+534656.5",
-    "0901870201": "RMJ092647.3+050004.0",
-    "0881900301": "RMJ121917.6+505432.8",
-    "0901870901": "RMJ082944.9+382754.4",
-    "0881900501": "RMJ163509.2+152951.5",
-    "0881900701": "RMJ125725.9+365429.4",
-    "0922150101": "RMJ232104.1+291134.5",
-    "0922150301": "RMJ104311.1+150151.9",
-    "0922150401": "RMJ010934.2+330301.0",
-    "0922150601": "RMJ021952.2+012952.2",
-}

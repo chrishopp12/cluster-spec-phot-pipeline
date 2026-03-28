@@ -4,6 +4,8 @@ Tracks all decisions, rationale, and progress. Started 2026-03-28.
 
 ---
 
+### Coding Note: No Claude co-author on commits
+
 ## 2026-03-28 — Planning Session
 
 ### Design Decisions

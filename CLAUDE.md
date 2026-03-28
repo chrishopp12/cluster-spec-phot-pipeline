@@ -84,4 +84,4 @@ pytest                                        # Run tests
 - v1 tagged on main branch (X-SORTER paper submission)
 - v2 refactor on `v2-refactor` branch
 - Old `my_utils.py` kept as re-export shim during migration (remove in Phase 5)
-- No Claude co-author on commits
+- **No Claude co-author on commits**
