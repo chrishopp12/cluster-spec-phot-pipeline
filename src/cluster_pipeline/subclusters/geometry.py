@@ -1,18 +1,55 @@
-"""Bisector-based sky region geometry.
+#!/usr/bin/env python3
+"""
+geometry.py
 
+Bisector-Based Sky Region Geometry
+---------------------------------------------------------
 Computes great-circle bisectors between BCG pairs, partitions the sky
 into unique regions via signature matching, and produces bounding arc
 segments for visualization.
+
+Functions accept either a list of Subcluster objects, a list of dicts
+with a 'center' key, or a plain list of SkyCoord objects.  All geometry
+math is identical regardless of input type.
 """
 
-import numpy as np
-from astropy.coordinates import SkyCoord, CartesianRepresentation
-import astropy.units as u
+from __future__ import annotations
 
 from collections import defaultdict
+from typing import TYPE_CHECKING
+
+import numpy as np
+from astropy.coordinates import SkyCoord
+import astropy.units as u
+
+if TYPE_CHECKING:
+    from cluster_pipeline.models.subcluster import Subcluster
 
 
-def get_bisectors(subcluster_configs):
+# ------------------------------------------------------------------
+# Helper
+# ------------------------------------------------------------------
+
+def _get_centers(subclusters) -> list[SkyCoord]:
+    """Extract center positions from Subcluster objects or dicts."""
+    centers = []
+    for sub in subclusters:
+        if hasattr(sub, 'region_center'):
+            centers.append(sub.region_center)
+        elif isinstance(sub, dict) and 'center' in sub:
+            centers.append(sub['center'])
+        elif isinstance(sub, SkyCoord):
+            centers.append(sub)
+        else:
+            raise TypeError(f"Cannot extract center from {type(sub)}")
+    return centers
+
+
+# ------------------------------------------------------------------
+# Bisector computation
+# ------------------------------------------------------------------
+
+def get_bisectors(subclusters):
     """
     Compute all pairwise great-circle bisectors between centers (SkyCoord objects).
 
@@ -24,8 +61,8 @@ def get_bisectors(subcluster_configs):
 
     Parameters
     ----------
-    subcluster_configs : list of dict
-        List of subcluster configuration dictionaries, each containing at least a 'center' key with a SkyCoord value.
+    subclusters : list[Subcluster] | list[dict] | list[SkyCoord]
+        Subcluster objects, config dicts with a 'center' key, or bare SkyCoord positions.
 
     Returns
     -------
@@ -53,7 +90,7 @@ def get_bisectors(subcluster_configs):
     """
 
     bisectors = []
-    centers = [sub['center'] for sub in subcluster_configs]
+    centers = _get_centers(subclusters)
 
     n = len(centers)
     for i in range(n):
@@ -81,14 +118,14 @@ def get_bisectors(subcluster_configs):
             })
     return bisectors
 
-def define_bbox(subcluster_configs, margin_frac):
+def define_bbox(subclusters, margin_frac):
     """
     Compute a bounding box in RA/Dec that encloses all centers, with optional padding.
 
     Parameters
     ----------
-    subcluster_configs : list of dict
-        List of subcluster configuration dictionaries, each containing at least a 'center' key with a SkyCoord value.
+    subclusters : list[Subcluster] | list[dict] | list[SkyCoord]
+        Subcluster objects, config dicts with a 'center' key, or bare SkyCoord positions.
     margin_frac : float
         Padding factor. The margin added to each side is margin_frac times
         the largest extent (either RA or Dec) among the centers.
@@ -110,7 +147,7 @@ def define_bbox(subcluster_configs, margin_frac):
     - Padding is symmetric and based on the *maximum* span in RA or Dec,
       so the box is always square in angular size.
     """
-    centers = [sub['center'] for sub in subcluster_configs]
+    centers = _get_centers(subclusters)
 
     ra_vals = np.array([c.ra.deg for c in centers])
     dec_vals = np.array([c.dec.deg for c in centers])
@@ -193,7 +230,7 @@ def get_segments(bisectors, bbox_edges, segment_length=0.2, n_points=1000):
             segments.append((p1, p2, b['pair']))
     return segments
 
-def build_bcg_signatures(subcluster_configs, bisectors):
+def build_bcg_signatures(subclusters, bisectors):
     """
     For each BCG, compute its signature vector with respect to all bisectors.
 
@@ -204,8 +241,8 @@ def build_bcg_signatures(subcluster_configs, bisectors):
 
     Parameters
     ----------
-    subcluster_configs : list of dict
-        List of subcluster configuration dictionaries, each containing at least a 'center' key with a SkyCoord value.
+    subclusters : list[Subcluster] | list[dict] | list[SkyCoord]
+        Subcluster objects, config dicts with a 'center' key, or bare SkyCoord positions.
     bisectors : list of dict
         Output from get_bisectors; each dict must have 'pair' (tuple of indices) and 'pole' (3D unit vector).
     Returns
@@ -222,7 +259,7 @@ def build_bcg_signatures(subcluster_configs, bisectors):
     - These signature vectors are later used to assign sky regions and classify membership.
 
     """
-    centers = [sub['center'] for sub in subcluster_configs]
+    centers = _get_centers(subclusters)
     signatures = {}
     for k, bcg in enumerate(centers):
         v = bcg.cartesian.xyz.value  # 3D unit vector for this BCG

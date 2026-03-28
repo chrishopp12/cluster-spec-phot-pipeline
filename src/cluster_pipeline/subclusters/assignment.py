@@ -1,14 +1,26 @@
-"""Subcluster member assignment via bisector signature matching."""
+#!/usr/bin/env python3
+"""
+assignment.py
+
+Subcluster Member Assignment via Bisector Signature Matching
+---------------------------------------------------------
+Assigns galaxies to subclusters based on bisector geometry, radial
+cuts, and (optional) redshift bounds.  Operates on Subcluster objects
+and populates their ``region``, ``spec_members``, and ``phot_members``
+attributes in-place.
+"""
 
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 
+from cluster_pipeline.models.region import Region
 from cluster_pipeline.subclusters.geometry import (
     get_bisectors,
     define_bbox,
@@ -18,19 +30,22 @@ from cluster_pipeline.subclusters.geometry import (
     classify_segments,
 )
 
+if TYPE_CHECKING:
+    from cluster_pipeline.models.subcluster import Subcluster
 
-def assign_subcluster_regions(subcluster_configs, margin=0.05, margin_frac=5.0, plot=False, verbose=False):
+
+def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=False, verbose=False):
     """
     Assign spatial regions to each BCG (Brightest Cluster Galaxy) using all pairwise bisectors.
 
     This partitions the sky such that each BCG's region is bounded by the set of bisectors it is involved with.
-    Returns a dictionary mapping each BCG to the list of region-defining line segments.
+    Populates ``sub.region`` on each Subcluster with a Region object.
     Optionally displays a diagnostic plot of the regions and bounding box.
 
     Parameters
     ----------
-    subcluster_configs : list of dict
-        List of subcluster configuration dictionaries, each containing at least a 'center' key with a SkyCoord value.
+    subclusters : list[Subcluster]
+        List of Subcluster objects.
     margin : float, optional
         Absolute padding (in degrees) to expand the bounding box. [default: 0.05]
     margin_frac : float, optional
@@ -54,17 +69,17 @@ def assign_subcluster_regions(subcluster_configs, margin=0.05, margin_frac=5.0, 
     ValueError if fewer than two centers are provided.
     """
 
-    centers = [sub['center'] for sub in subcluster_configs]
-    colors = [sub['color'] for sub in subcluster_configs]
+    centers = [sub.region_center for sub in subclusters]
+    colors = [sub.color for sub in subclusters]
     if len(centers) < 2:
         raise ValueError("At least two BCG centers are required to assign subcluster regions.")
 
 
     # --- Compute all pairwise bisectors ---
-    bisectors = get_bisectors(subcluster_configs)
+    bisectors = get_bisectors(subclusters)
 
     # -- Define bounding box (RA/Dec) and edges --
-    ra_min, ra_max, dec_min, dec_max = define_bbox(subcluster_configs, margin_frac)
+    ra_min, ra_max, dec_min, dec_max = define_bbox(subclusters, margin_frac)
     bbox_edges = [
         ((ra_min, dec_min), (ra_max, dec_min)),
         ((ra_max, dec_min), (ra_max, dec_max)),
@@ -76,10 +91,19 @@ def assign_subcluster_regions(subcluster_configs, margin=0.05, margin_frac=5.0, 
     segments = get_segments(bisectors, bbox_edges)
 
     # -- Build signature vector for each BCG across all bisectors --
-    bcg_signatures = build_bcg_signatures(subcluster_configs, bisectors)
+    bcg_signatures = build_bcg_signatures(subclusters, bisectors)
 
     # -- Classify segments into BCG-defined regions --
     bcg_regions = classify_segments(segments, bisectors, bcg_signatures, verbose=verbose)
+
+    # -- Populate Region objects on each Subcluster --
+    for i, sub in enumerate(subclusters):
+        sub.region = Region(
+            bcg_index=i,
+            signature=bcg_signatures.get(i, []),
+            segments=bcg_regions.get(i, []),
+            bisectors=bisectors,
+        )
 
    # --- Optional: Diagnostic Plotting --- #This plot is a pain, but can be a good first-look
     if plot:
@@ -125,17 +149,20 @@ def assign_subcluster_regions(subcluster_configs, margin=0.05, margin_frac=5.0, 
         print(f"  BCG Regions are {bcg_regions}")
     return bcg_regions
 
-def assign_subcluster_members_multi(subcluster_configs, galaxies_df, plot=False):
+def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
     """
     Assign galaxies to subclusters based on bisector geometry, radial cut, and (optional) redshift bounds.
 
     Each subcluster is defined as the unique region bounded by bisectors between all centers;
     galaxies are assigned by matching their "side" of each bisector to each BCG's signature.
 
+    Populates ``sub.spec_members`` and ``sub.phot_members`` on each Subcluster after
+    downstream filtering and catalog generation.
+
     Parameters
     ----------
-    subcluster_configs : list of dict
-        List of subcluster configuration dictionaries.
+    subclusters : list[Subcluster]
+        List of Subcluster objects.
     galaxies_df : pd.DataFrame
         DataFrame with columns 'RA', 'Dec', and (optionally) 'z'.
     plot : bool, optional
@@ -149,15 +176,15 @@ def assign_subcluster_members_multi(subcluster_configs, galaxies_df, plot=False)
         Bisector metadata (from get_bisectors), for possible plotting/debug.
     """
 
-    centers = [sub['center'] for sub in subcluster_configs]
+    centers = [sub.region_center for sub in subclusters]
     n = len(centers)
     galaxy_coords = SkyCoord(ra=galaxies_df['RA'].values * u.deg, dec=galaxies_df['Dec'].values * u.deg)
 
     df_valid = galaxies_df.copy()
 
     # --- Bisector & signature calculations ---
-    bisectors = get_bisectors(subcluster_configs)
-    bcg_signatures = build_bcg_signatures(subcluster_configs, bisectors)
+    bisectors = get_bisectors(subclusters)
+    bcg_signatures = build_bcg_signatures(subclusters, bisectors)
 
     galaxy_signatures = []
     for coord in galaxy_coords:
@@ -224,7 +251,7 @@ def assign_subcluster_members_multi(subcluster_configs, galaxies_df, plot=False)
         region_list.append(df_valid[region_ids == i].copy())
     return region_list, bisectors
 
-def filter_members_by_config(member_groups, subcluster_configs, spec=True):
+def filter_members_by_config(member_groups, subclusters, spec=True):
     """
     Apply per-subcluster radius and (optionally) redshift cuts after region assignment.
 
@@ -232,8 +259,8 @@ def filter_members_by_config(member_groups, subcluster_configs, spec=True):
     ----------
     member_groups : list of pd.DataFrame
         Region-assigned galaxy tables, each with 'RA', 'Dec', and optionally 'z'.
-    subcluster_configs : list of dict
-        Each dict contains 'z_range' (tuple of floats) and 'radius' (arcmin).
+    subclusters : list[Subcluster]
+        List of Subcluster objects with ``z_range`` and ``radius_mpc`` attributes.
     spec : bool, optional
         If True, apply redshift cut as well as radius.
 
@@ -242,15 +269,15 @@ def filter_members_by_config(member_groups, subcluster_configs, spec=True):
     filtered : list of pd.DataFrame
         Filtered list of member groups.
     """
-    centers = [sub['center'] for sub in subcluster_configs]
+    centers = [sub.region_center for sub in subclusters]
     filtered = []
     for i, df in enumerate(member_groups):
         if df.empty:
             filtered.append(df)
             continue
 
-        zmin, zmax = subcluster_configs[i]['z_range']
-        max_radius = subcluster_configs[i]['radius']
+        zmin, zmax = subclusters[i].z_range
+        max_radius = subclusters[i].radius_mpc
 
         coords = SkyCoord(ra=df['RA'].values * u.deg, dec=df['Dec'].values * u.deg)
         sep = coords.separation(centers[i]).arcmin
@@ -277,29 +304,60 @@ def filter_members_by_config(member_groups, subcluster_configs, spec=True):
 
     return filtered
 
-def make_member_catalogs(cluster, spec_groups, phot_groups, subcluster_configs):
+def make_member_catalogs(cluster, spec_groups, phot_groups, subclusters):
+    """
+    Write spectroscopic and photometric member catalogs to disk for each subcluster.
 
-    # Output spectroscopic and photometric member catalogs for each subcluster
-    output_dir = os.path.join(cluster.cluster_path, "Subcluster_Catalogs")
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object; uses ``cluster.members_path`` for output directory.
+    spec_groups : list of pd.DataFrame
+        Spectroscopic member tables per subcluster.
+    phot_groups : list of pd.DataFrame
+        Photometric member tables per subcluster.
+    subclusters : list[Subcluster]
+        Subcluster objects; uses ``sub.label`` for filenames.
+    """
+    output_dir = cluster.members_path
     os.makedirs(output_dir, exist_ok=True)
 
     for i, (spec_df, phot_df) in enumerate(zip(spec_groups, phot_groups)):
-        sub_id = subcluster_configs[i].get("bcg_id", i+1)
-        label = subcluster_configs[i].get("bcg_label", f"{sub_id}")
+        label = subclusters[i].label
         # Safe file label
         safe_label = str(label).replace(" ", "_")
         # Output filenames
-        spec_file = os.path.join(output_dir, f"spec_members_subcluster_{safe_label}.csv")
-        phot_file = os.path.join(output_dir, f"phot_members_subcluster_{safe_label}.csv")
+        spec_file = os.path.join(output_dir, f"subcluster_{safe_label}_members.csv")
+        phot_file = os.path.join(output_dir, f"subcluster_{safe_label}_phot_members.csv")
         # Write DataFrames
         spec_df.to_csv(spec_file, index=False)
         phot_df.to_csv(phot_file, index=False)
         print(f"  - Saved {len(spec_df)} spectroscopic and {len(phot_df)} photometric members for subcluster {label} to CSV.")
 
-def make_combined_groups(cluster, spec_groups, phot_groups, subcluster_configs, combine_groups=None):
+def make_combined_groups(cluster, spec_groups, phot_groups, subclusters, combine_groups=None):
+    """
+    Optionally combine member catalogs for grouped subclusters and write to disk.
 
-    # Output spectroscopic and photometric member catalogs for each subcluster
-    output_dir = os.path.join(cluster.cluster_path, "Subcluster_Catalogs")
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object; uses ``cluster.members_path`` for output directory.
+    spec_groups : list of pd.DataFrame
+        Spectroscopic member tables per subcluster.
+    phot_groups : list of pd.DataFrame
+        Photometric member tables per subcluster.
+    subclusters : list[Subcluster]
+        Subcluster objects with ``group_members``, ``is_dominant``, and ``group_id`` attributes.
+    combine_groups : list of tuple or None, optional
+        Pairs of BCG IDs to combine.
+
+    Returns
+    -------
+    spec_groups_combined : list of pd.DataFrame
+    phot_groups_combined : list of pd.DataFrame
+    combined_indices : list of tuple or None
+    """
+    output_dir = cluster.members_path
     os.makedirs(output_dir, exist_ok=True)
 
     spec_groups_copy = None
@@ -308,13 +366,13 @@ def make_combined_groups(cluster, spec_groups, phot_groups, subcluster_configs, 
     if combine_groups is not None:
         for group in combine_groups:
             print(f"\nCombining subclusters {group[0]} and {group[1]} into one catalog.")
-            index_1 = [index for index, element in enumerate(subcluster_configs) if element['bcg_id'] == group[0]][0]
-            index_2 = [index for index, element in enumerate(subcluster_configs) if element['bcg_id'] == group[1]][0]
+            index_1 = [index for index, sub in enumerate(subclusters) if sub.bcg_id == group[0]][0]
+            index_2 = [index for index, sub in enumerate(subclusters) if sub.bcg_id == group[1]][0]
             spec_combine = pd.concat([spec_groups[index_1], spec_groups[index_2]])
             phot_combine = pd.concat([phot_groups[index_1], phot_groups[index_2]])
 
-            spec_file = os.path.join(output_dir, f"spec_members_subcluster_{group[0]}_{group[1]}.csv")
-            phot_file = os.path.join(output_dir, f"phot_members_subcluster_{group[0]}_{group[1]}.csv")
+            spec_file = os.path.join(output_dir, f"subcluster_{group[0]}_{group[1]}_members.csv")
+            phot_file = os.path.join(output_dir, f"subcluster_{group[0]}_{group[1]}_phot_members.csv")
             spec_combine.to_csv(spec_file, index=False)
             phot_combine.to_csv(phot_file, index=False)
             print(f"  - Saved combined spectroscopic and photometric members for subclusters {group[0]} and {group[1]} to CSV.")
