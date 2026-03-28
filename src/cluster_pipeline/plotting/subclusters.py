@@ -56,6 +56,12 @@ if TYPE_CHECKING:
     from cluster_pipeline.models.subcluster import Subcluster
 
 
+def _get_optical(cluster):
+    """Get optical image path, using io.images if needed."""
+    from cluster_pipeline.io.images import get_optical_image
+    return get_optical_image(cluster, cluster.fov)
+
+
 # -- Figures and Plots --
 def plot_subcluster_members_and_regions(
     cluster,
@@ -127,7 +133,7 @@ def plot_subcluster_members_and_regions(
     if phot_groups_combined is not None:
         phot_groups = phot_groups_combined
 
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # Load WCS
     with fits.open(optical_image_file) as hdul:
@@ -285,7 +291,7 @@ def plot_redshift_and_subclusters_figure(
     if legend_loc_top is None:
         legend_loc_top = legend_loc
 
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # -- Load optical images and WCS --
     with fits.open(optical_image_file) as hdul:
@@ -627,7 +633,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
     if legend_loc_bottom is None:
         legend_loc_bottom = legend_loc
 
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # -- Load optical images and WCS --
     with fits.open(optical_image_file) as hdul:
@@ -824,7 +830,7 @@ def plot_2panel_optical_contours(
     """
 
 
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # -- Load optical images and WCS --
     with fits.open(optical_image_file) as hdul:
@@ -959,7 +965,7 @@ def plot_3panel_optical_subclusters_figure(
     """
 
 
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # -- Load WCS for axis projection
     with fits.open(optical_image_file) as hdul:
@@ -1103,7 +1109,7 @@ def plot_combined_4panel_figure(
     -----
     - Panels are created using `plot_2panel_optical_contours` and `plot_redshift_and_subclusters_figure`.
     """
-    optical_image_file = cluster.get_optical_image()
+    optical_image_file = _get_optical(cluster)
 
     # Load WCS
     with fits.open(optical_image_file) as hdul:
@@ -1267,7 +1273,7 @@ def plot_subcluster_regions_and_histograms(
     gs = GridSpec(n_subclusters + 1, 1, height_ratios=height_ratios, hspace=0.0)
 
     ax_list = [fig.add_subplot(gs[i]) for i in range(0, n_subclusters)]
-    ax_img = fig.add_subplot(gs[-1], projection=WCS(fits.getheader(cluster.get_optical_image(), 0), naxis=2))
+    ax_img = fig.add_subplot(gs[-1], projection=WCS(fits.getheader(_get_optical(cluster), 0), naxis=2))
 
 
 

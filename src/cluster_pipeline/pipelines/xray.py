@@ -119,11 +119,60 @@ def run_xray(
         make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
 
     # Subcluster analysis
-    if subclusters is not None:
+    if subclusters is not None and len(subclusters) >= 2:
         print(f"\n--- Subcluster analysis ({len(subclusters)} subclusters) ---")
-        # TODO: Wire analyze_cluster to use list[Subcluster] natively
-        #       For now, this is a placeholder for the full orchestration
-        print("  Subcluster analysis orchestration: TODO (wire to refactored stages)")
+        cluster.ensure_directories()
+
+        # Load member catalog and spectroscopic catalog
+        members_path = os.path.join(cluster.members_path, "cluster_members.csv")
+        spec_path = cluster.spec_file
+
+        if not os.path.isfile(spec_path):
+            print(f"  No combined_redshifts.csv found — skipping member assignment")
+            return
+
+        spec_df = pd.read_csv(spec_path)
+        print(f"  Loaded {len(spec_df)} spectroscopic sources")
+
+        # Load member catalog if available (for photometric members)
+        if os.path.isfile(members_path):
+            members_df = pd.read_csv(members_path)
+            print(f"  Loaded {len(members_df)} cluster members")
+        else:
+            members_df = spec_df.copy()
+            print(f"  No cluster_members.csv — using spec catalog only")
+
+        # Stage 6: Assign regions + members
+        print("\n  --- Assigning subcluster regions ---")
+        bcg_regions = assign_subcluster_regions(subclusters, verbose=True)
+
+        print("\n  --- Assigning spectroscopic members ---")
+        spec_groups, bisectors = assign_subcluster_members_multi(subclusters, spec_df)
+        spec_groups = filter_members_by_config(spec_groups, subclusters, spec=True)
+
+        print("\n  --- Assigning photometric members ---")
+        phot_groups, _ = assign_subcluster_members_multi(subclusters, members_df)
+        phot_groups = filter_members_by_config(phot_groups, subclusters, spec=False)
+
+        # Populate Subcluster objects with their members
+        for i, sub in enumerate(subclusters):
+            sub.spec_members = spec_groups[i]
+            sub.phot_members = phot_groups[i]
+
+        # Write member catalogs
+        make_member_catalogs(cluster, spec_groups, phot_groups, subclusters)
+
+        # Stage 7: Statistics
+        print("\n  --- Subcluster statistics ---")
+        group_stats = analyze_group(subclusters)
+        for label, stats in group_stats.items():
+            n = stats.get("n_spec", 0)
+            sv = stats.get("sigma_v", 0)
+            zm = stats.get("z_mean", 0)
+            print(f"    Subcluster {label}: N_spec={n}, z_mean={zm:.4f}, sigma_v={sv:.1f} km/s")
+
+    elif subclusters is not None and len(subclusters) < 2:
+        print(f"\n  Only {len(subclusters)} subcluster — need at least 2 for bisector analysis")
 
 
 # ====================================================================

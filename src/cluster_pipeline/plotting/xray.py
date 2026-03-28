@@ -605,9 +605,10 @@ def make_plots(
     spec_file = cluster.spec_file
 
     # --- Optical image files ---
+    from cluster_pipeline.io.images import get_optical_image
     optical_kwargs = {k: v for k, v in kwargs.items() if k in ('ra_offset', 'dec_offset')}
-    optical_image_file_full = cluster.get_optical_image(fov=fov_full, **optical_kwargs)
-    optical_image_file = cluster.get_optical_image(fov=fov, **optical_kwargs)
+    optical_image_file_full = get_optical_image(cluster, fov_full, **optical_kwargs)
+    optical_image_file = get_optical_image(cluster, fov, **optical_kwargs)
 
     # --- Output pdf filenames ---
     optical_image_pdf_full = os.path.join(phot_images_path, "optical_image_full.pdf") if save_plots else None
