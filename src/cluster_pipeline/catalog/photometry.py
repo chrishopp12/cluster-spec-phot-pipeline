@@ -1,215 +1,188 @@
 #!/usr/bin/env python3
 """
-archival_phot_pipeline.py
+photometry.py
 
-Archival Photometry Pipeline
+Stage 2: Archival Photometric Catalog Retrieval
 ---------------------------------------------------------
 
-This script queries archival photometric data around a given cluster from:
-  - PanSTARRS (via Visier)
+Queries archival photometric catalogs around a cluster position from:
+  - PanSTARRS DR1 (via VizieR)
   - Legacy DR10 (via NOIRLab TAP and Q3C_RADIAL_QUERY)
 
-It calculates g-r, g-i, and r-i colors and luminosity weighting
-in each filter. The outputs are then:
-  - Individual CSVs for each catalog (Legacy, PanSTARRS)
-  - A merged catalog, with no removal of double-entries.
+Computes g-r, r-i, and g-i colors and luminosity weights in each band.
+Surveys are NOT combined — Legacy and PanSTARRS are archived separately
+since their photometric systems are not directly interchangeable.
+
+Data products (archived per survey, before any deduplication):
+  - Photometry/photometry_legacy.csv      Legacy DR10 photometry
+  - Photometry/photometry_panstarrs.csv   PanSTARRS DR1 photometry
+
+Column convention:
+  RA, Dec, gmag, rmag, imag, phot_source, lum_weight_g, lum_weight_r,
+  lum_weight_i, g_r, r_i, g_i
 
 Requirements:
-    - astropy
-    - astroquery
-    - numpy
-    - pandas
-    - cluster.py (local)
-    - my_utils.py (local)
-
-Usage:
-    python archival_phot_pipeline.py CLUSTER_ID [options]
-
-Example:
-    python archival_phot_pipeline.py "Abell 2355" -r 15.0 --get-legacy True --get-panstarrs False
-
-Options:
-    -r, --radius    <float>    Search radius in arcminutes        [default: 10.0]
-    -p, --path      <str>      Output directory path              [default: cluster BASE_PATH]
-    --get-legacy    <bool>     Build Legacy catalog from query    [default: true]
-    --get-panstarrs <bool>     Build PanSTARRS catalog from query [default: true]
+  - astropy, astroquery, numpy, pandas
 
 Notes:
-    "CLUSTER_ID" positional arg can be input as a cluster identifier mapped to a cluster name (eg. '1219' or '0881900301') or the
-    full RMJ/Abell name (possibly others).
+  - Each survey is queried independently; a failure in one does not prevent
+    the other from running.
+  - Missing magnitudes are stored as NaN (never -9999 or inf).
+  - Luminosity weights are unnormalized flux proportional (10^(-0.4 * mag)).
+  - Legacy uses paginated TAP queries to handle large catalogs.
 """
+
 from __future__ import annotations
 
 import os
-import argparse
 
 import pandas as pd
 import numpy as np
 
-from astropy.coordinates import SkyCoord
 import astropy.units as u
-
 from astroquery.vizier import Vizier
 from astroquery.utils.tap.core import TapPlus
 
 from cluster_pipeline.models.cluster import Cluster
-from cluster_pipeline.utils import str2bool, coerce_to_numeric
-
+from cluster_pipeline.utils import coerce_to_numeric
 
 # ------------------------------------
-# Defaults/ Constants
+# Constants
 # ------------------------------------
 DEFAULT_RADIUS_ARCMIN = 10.0
 DEFAULT_LEGACY_STEP = 2000
 DEFAULT_LEGACY_MAX_ROWS = 150000
 
 PANSTARRS_CATALOG = "II/349/ps1"
-LEGACY_CATALOG = "ls_dr10.tractor"
 LEGACY_URL = "https://datalab.noirlab.edu/tap"
+LEGACY_TABLE = "ls_dr10.tractor"
 
-RA_COL = 'RA'
-DEC_COL = 'Dec'
-SOURCE_COL = 'phot_source'
-MAG_COLS = ('gmag', 'rmag', 'imag')
-LUM_WEIGHT_COLS = ('lum_weight_g', 'lum_weight_r', 'lum_weight_i')
-COLOR_COLS = ('g_r', 'r_i', 'g_i')
+# Standard column names
+MAG_COLS = ("gmag", "rmag", "imag")
+LUM_WEIGHT_COLS = ("lum_weight_g", "lum_weight_r", "lum_weight_i")
+COLOR_COLS = ("g_r", "r_i", "g_i")
+COLUMNS = ["RA", "Dec", *MAG_COLS, "phot_source", *LUM_WEIGHT_COLS, *COLOR_COLS]
 
-BASE_COLS = (RA_COL, DEC_COL, *MAG_COLS, SOURCE_COL)
-DERIVED_COLS = (*LUM_WEIGHT_COLS, *COLOR_COLS)
-ALL_COLS = (*BASE_COLS, *DERIVED_COLS)
-
-PANSTARRS_OUTFILE = "photometry_PanSTARRS.csv"
-LEGACY_OUTFILE = "photometry_legacy.csv"
-COMBINED_OUTFILE = "photometry_combined.csv"
+# Sentinel values to replace with NaN
+MAGNITUDE_SENTINELS = [-9999.0, -9999, -999.0, -999, 99.0, 99.99]
 
 
-# ------------------------------------
-# Helpers
-# ------------------------------------
+# ====================================================================
+# Public interface
+# ====================================================================
 
-def _build_phot_df() -> pd.DataFrame:
-    """
-    Builds an empty photometry DataFrame with required columns.
+def run_photometry(
+    cluster: Cluster,
+    *,
+    surveys: list[str] | None = None,
+    radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
+    retrieve: bool = True,
+) -> dict[str, pd.DataFrame]:
+    """Query archival photometry and return per-survey catalogs.
+
+    Each survey is queried independently — a failure in one does not
+    prevent the other from running.
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Must have ``coords`` set (ra, dec) and valid ``photometry_path``.
+    surveys : list of str, optional
+        Which surveys to query. Default: ``["legacy", "panstarrs"]``.
+    radius_arcmin : float
+        Search radius in arcminutes. [default: 10.0]
+    retrieve : bool
+        If True, query the survey APIs. If False, load from existing CSVs
+        on disk. [default: True]
 
     Returns
     -------
-    df : pd.DataFrame
-        Empty DataFrame with columns for RA, Dec, magnitudes.
-    """
-    columns = list(ALL_COLS)
-    return pd.DataFrame(columns=columns)
+    catalogs : dict[str, pd.DataFrame]
+        Keyed by survey name (``"legacy"``, ``"panstarrs"``).
+        Each DataFrame has columns:
+        ``RA, Dec, gmag, rmag, imag, phot_source, lum_weight_g,
+        lum_weight_r, lum_weight_i, g_r, r_i, g_i``.
 
-def _standardize_phot_df(
-        df: pd.DataFrame,
-        *,
-        source: str | None = None,
+    Notes
+    -----
+    - Surveys are NOT combined — their photometric systems are not
+      directly interchangeable.
+    - Each survey is archived individually to
+      ``Photometry/photometry_{survey}.csv``.
+    - Missing magnitudes are stored as NaN (sentinels like -9999 are cleaned).
+    """
+    if cluster.coords is None:
+        raise ValueError("Cluster coordinates not set. Cannot query photometry.")
+
+    if surveys is None:
+        surveys = ["legacy", "panstarrs"]
+
+    coord = cluster.coords
+    cluster.ensure_directories()
+
+    print(f"\nPhotometry: RA={coord.ra.deg:.5f}, Dec={coord.dec.deg:.5f}, "
+          f"radius={radius_arcmin}', surveys={surveys}")
+
+    catalogs: dict[str, pd.DataFrame] = {}
+
+    for survey in surveys:
+        out_path = os.path.join(cluster.photometry_path, f"photometry_{survey}.csv")
+
+        if retrieve:
+            df = _query_survey(survey, coord, radius_arcmin)
+        else:
+            df = _load_from_disk(out_path, survey)
+
+        # Compute derived columns and clean sentinels
+        df = _clean_magnitudes(df)
+        df = _add_derived_columns(df)
+
+        # Archive
+        if retrieve and not df.empty:
+            df.to_csv(out_path, index=False)
+            print(f"  {survey}: {len(df)} sources → {out_path}")
+        elif not retrieve:
+            print(f"  {survey}: {len(df)} sources loaded from {out_path}")
+
+        catalogs[survey] = df
+
+    return catalogs
+
+
+# ====================================================================
+# Query functions
+# ====================================================================
+
+def query_panstarrs(
+    coord,
+    radius_arcmin: float,
 ) -> pd.DataFrame:
-    """
-    Standardizes a photometry DataFrame to have required columns and source.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input photometry DataFrame.
-    source : str | None
-        Source catalog name ('legacy' or 'panstarrs').
-
-    Returns
-    -------
-    output : pd.DataFrame
-        Standardized DataFrame with required columns and source.
-    """
-    out = df.copy()
-
-    # Ensure required columns exist
-    for col in ALL_COLS:
-        if col not in out.columns:
-            out[col] = np.nan
-
-    # Ensure numeric types, drop missing coords
-    out = coerce_to_numeric(out, (RA_COL, DEC_COL, *MAG_COLS))
-    out = out.dropna(subset=[RA_COL, DEC_COL]).reset_index(drop=True)
-
-    # Set source column
-    if source is not None:
-        out[SOURCE_COL] = source
-
-    # Ensure stable order
-    output = out.loc[:, list(ALL_COLS)]
-
-    return output
-
-
-def _open_or_build_phot_df(file_path: str) -> pd.DataFrame:
-    """
-    Opens a photometry CSV if it exists, else builds an empty DataFrame.
-
-    Parameters
-    ----------
-    file_path : str
-        Path to the photometry CSV file.
-
-    Returns
-    -------
-    df : pd.DataFrame
-        Photometry DataFrame.
-    """
-    if os.path.exists(file_path):
-        df = pd.read_csv(file_path)
-        df = _standardize_phot_df(df)
-    else:
-        df = _build_phot_df()
-    return df
-
-
-def _save_photometry(
-        df: pd.DataFrame,
-        out_file: str,
-    ) -> None:
-    """
-    Saves the photometry DataFrame to a CSV file.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Photometry DataFrame to save.
-    out_file : str
-        Output file path.
-    """
-    os.makedirs(os.path.dirname(out_file), exist_ok=True)
-
-    df = _standardize_phot_df(df)
-    df.to_csv(out_file, index=False)
-    print(f"Photometry saved to {out_file} ({len(df)} rows)")
-
-
-# ------------------------------------
-# Query Functions
-# ------------------------------------
-
-def query_panstarrs_phot(
-        coord: SkyCoord,
-        radius_arcmin: float,
-    ) -> pd.DataFrame:
-    """
-    Queries Pan-STARRS photometry around a given SkyCoord.
+    """Query PanSTARRS DR1 photometry via VizieR.
 
     Parameters
     ----------
     coord : SkyCoord
-        Center coordinates for the query.
+        Central search coordinate.
     radius_arcmin : float
-        Radius of the query region in arcminutes.
+        Search radius in arcminutes.
 
     Returns
     -------
-    panstarrs_df : pd.DataFrame
-        DataFrame containing Pan-STARRS photometry with RA, Dec, gmag, rmag, imag.
-    """
-    print("Querying Pan-STARRS via Vizier...")
+    pd.DataFrame
+        Photometry catalog with columns: ``RA, Dec, gmag, rmag, imag, phot_source``.
+        Empty DataFrame if query fails or returns no results.
 
-    vizier = Vizier(columns=['RAJ2000', 'DEJ2000', 'gmag', 'rmag', 'imag'],
-                    column_filters={}, row_limit=-1)
+    Notes
+    -----
+    - Uses VizieR catalog II/349/ps1 (PanSTARRS DR1 mean photometry).
+    - Row limit is set to -1 (unlimited) to retrieve all sources.
+    """
+    print(f"  PanSTARRS query...")
+
+    vizier = Vizier(
+        columns=["RAJ2000", "DEJ2000", "gmag", "rmag", "imag"],
+        row_limit=-1,
+    )
 
     try:
         result = vizier.query_region(
@@ -218,59 +191,63 @@ def query_panstarrs_phot(
             catalog=PANSTARRS_CATALOG,
         )
     except Exception as e:
-        print(f"Pan-STARRS query failed: {e}")
-        return _build_phot_df()
+        print(f"  PanSTARRS query failed: {e}")
+        return pd.DataFrame(columns=COLUMNS)
 
     if not result:
-        print("No Pan-STARRS results found.")
-        return _build_phot_df()
+        print("  PanSTARRS: no results found")
+        return pd.DataFrame(columns=COLUMNS)
 
-    panstarrs_df = result[0].to_pandas().rename(columns={'RAJ2000': RA_COL, 'DEJ2000': DEC_COL})
-    panstarrs_df = _standardize_phot_df(panstarrs_df, source='panstarrs')
+    df = result[0].to_pandas().rename(columns={"RAJ2000": "RA", "DEJ2000": "Dec"})
+    df["phot_source"] = "panstarrs"
 
-    return panstarrs_df
+    return _standardize(df)
 
 
-def query_legacy_phot(
-        coord: SkyCoord,
-        radius_arcmin: float,
-        *,
-        step: int = DEFAULT_LEGACY_STEP,
-        max_rows: int = DEFAULT_LEGACY_MAX_ROWS,
-    ) -> pd.DataFrame:
-    """
-    Queries Legacy DR10 photometry around a given SkyCoord.
+def query_legacy(
+    coord,
+    radius_arcmin: float,
+    *,
+    step: int = DEFAULT_LEGACY_STEP,
+    max_rows: int = DEFAULT_LEGACY_MAX_ROWS,
+) -> pd.DataFrame:
+    """Query Legacy DR10 photometry via NOIRLab TAP.
 
     Parameters
     ----------
     coord : SkyCoord
-        Center coordinates for the query.
+        Central search coordinate.
     radius_arcmin : float
-        Radius of the query region in arcminutes.
+        Search radius in arcminutes.
     step : int
-        Step size for paginated query. [default: DEFAULT_LEGACY_STEP]
+        Page size for paginated query. [default: 2000]
     max_rows : int
-        Max total rows for query. [default: DEFAULT_LEGACY_MAX_ROWS]
+        Maximum total rows to retrieve. [default: 150000]
 
     Returns
     -------
-    legacy_df : pd.DataFrame
-        DataFrame containing Legacy DR10 photometry with RA, Dec, gmag, rmag, imag.
+    pd.DataFrame
+        Photometry catalog with columns: ``RA, Dec, gmag, rmag, imag, phot_source``.
+        Empty DataFrame if query fails or returns no results.
+
+    Notes
+    -----
+    - Uses Q3C_RADIAL_QUERY for efficient spatial indexing.
+    - Only returns brick_primary=1 sources (avoids duplicate detections).
+    - Paginated to handle large catalogs.
     """
-    print("Querying Legacy DR10 via NOIRLab TAP...")
+    print(f"  Legacy DR10 query...")
 
     tap = TapPlus(url=LEGACY_URL)
     ra, dec = float(coord.ra.deg), float(coord.dec.deg)
-    radius_deg = float(radius_arcmin) / 60.0
+    radius_deg = radius_arcmin / 60.0
 
     chunks: list[pd.DataFrame] = []
 
     for offset in range(0, int(max_rows), int(step)):
-        print(f"Querying rows {offset + 1} to {offset + step}...")
-
         query = f"""
         SELECT ra, dec, mag_g, mag_r, mag_i
-        FROM {LEGACY_CATALOG}
+        FROM {LEGACY_TABLE}
         WHERE brick_primary = 1
         AND 't' = q3c_radial_query(ra, dec, {ra:.6f}, {dec:.6f}, {radius_deg:.6f})
         ORDER BY ra
@@ -282,264 +259,156 @@ def query_legacy_phot(
             job = tap.launch_job(query)
             chunk = job.get_results().to_pandas()
         except Exception as e:
-            print(f"Legacy query failed at offset {offset}: {e}")
+            print(f"  Legacy query failed at offset {offset}: {e}")
             break
+
         if chunk.empty:
-            print("No more results.")
             break
+
         chunks.append(chunk)
 
+        if len(chunk) < step:
+            break  # Last page
+
     if not chunks:
-        print("No Legacy DR10 results found.")
-        return _build_phot_df()
+        print("  Legacy: no results found")
+        return pd.DataFrame(columns=COLUMNS)
+
+    df = pd.concat(chunks, ignore_index=True)
+    df = df.rename(columns={"ra": "RA", "dec": "Dec", "mag_g": "gmag", "mag_r": "rmag", "mag_i": "imag"})
+    df["phot_source"] = "legacy"
+
+    return _standardize(df)
 
 
-    legacy_df = pd.concat(chunks, ignore_index=True)
-    legacy_df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    legacy_df = legacy_df.rename(
-        columns={
-            'ra': RA_COL,
-            'dec': DEC_COL,
-            'mag_g': 'gmag',
-            'mag_r': 'rmag',
-            'mag_i': 'imag',
-        }
-    )
-    legacy_df = _standardize_phot_df(legacy_df, source='legacy')
+# ====================================================================
+# Derived columns
+# ====================================================================
 
-    return legacy_df
-
-
-# ------------------------------------
-# Derived Columns Functions
-# ------------------------------------
-
-def add_luminosity_weights(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Computes luminosity weights for each photometric band (g, r, i) and adds them as columns to the DataFrame.
-
-    For each magnitude column present ('gmag', 'rmag', 'imag'), computes:
-        lum_weight_band = 10 ** (-0.4 * mag_band)
-    The output columns are 'lum_weight_g', 'lum_weight_r', and 'lum_weight_i'.
-    If a required magnitude column is missing, the luminosity weight for that band is set to NaN.
+def _add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add luminosity weights and colors to a photometry DataFrame.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input DataFrame containing photometric data. Should include one or more of:
-        'gmag', 'rmag', 'imag' (magnitudes in g, r, i bands).
+        Must have ``gmag``, ``rmag``, ``imag`` columns (may contain NaN).
 
     Returns
     -------
-    out : pd.DataFrame
-        Modified DataFrame with new columns:
-        'lum_weight_g', 'lum_weight_r', 'lum_weight_i'
+    pd.DataFrame
+        DataFrame with added columns: ``lum_weight_g, lum_weight_r,
+        lum_weight_i, g_r, r_i, g_i``.
 
     Notes
     -----
-    - Assumes AB magnitude system.
-    - Output columns are always present, with NaN for missing bands.
-    - The luminosity weights are unnormalized and proportional to flux in each band.
+    - Luminosity weight = 10^(-0.4 * mag), proportional to flux (AB system).
+    - Colors are simple magnitude differences. NaN propagates naturally.
     """
     out = df.copy()
 
-    for mag, weight in zip(MAG_COLS, LUM_WEIGHT_COLS):
-        if mag in out.columns:
-            out[weight] = 10 ** (-0.4 * out[mag])
+    # Ensure magnitudes are numeric
+    for col in MAG_COLS:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce")
+
+    # Luminosity weights (all bands — downstream uses lum_weight_r for density)
+    for mag_col, weight_col in zip(MAG_COLS, LUM_WEIGHT_COLS):
+        if mag_col in out.columns:
+            out[weight_col] = 10.0 ** (-0.4 * out[mag_col])
         else:
-            out[weight] = np.nan
+            out[weight_col] = np.nan
+
+    # Colors
+    out["g_r"] = out.get("gmag", np.nan) - out.get("rmag", np.nan)
+    out["r_i"] = out.get("rmag", np.nan) - out.get("imag", np.nan)
+    out["g_i"] = out.get("gmag", np.nan) - out.get("imag", np.nan)
 
     return out
 
 
-def add_colors(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add color columns 'g_r','r_i', and 'g-i' to a photometric DataFrame.
-    Missing columns are assigned NaN values.
+# ====================================================================
+# Internal helpers
+# ====================================================================
+
+def _query_survey(name: str, coord, radius_arcmin: float) -> pd.DataFrame:
+    """Dispatch to the appropriate query function by survey name."""
+    if name == "legacy":
+        return query_legacy(coord, radius_arcmin)
+    elif name == "panstarrs":
+        return query_panstarrs(coord, radius_arcmin)
+    else:
+        print(f"  Unknown survey '{name}', skipping")
+        return pd.DataFrame(columns=COLUMNS)
+
+
+def _load_from_disk(path: str, survey: str) -> pd.DataFrame:
+    """Load a photometry CSV from disk, or return empty DataFrame."""
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        return _standardize(df, source=survey)
+    print(f"  {survey}: file not found at {path}")
+    return pd.DataFrame(columns=COLUMNS)
+
+
+def _standardize(df: pd.DataFrame, source: str | None = None) -> pd.DataFrame:
+    """Ensure standard column names, types, and ordering.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Photometric catalog with gmag, rmag, imag.
+        Raw photometry DataFrame.
+    source : str or None
+        Phot source label to set (e.g., "legacy", "panstarrs").
 
     Returns
     -------
-    out : pd.DataFrame
-        Modified DataFrame with 'g_r' and 'r_i' columns.
+    pd.DataFrame
+        Standardized DataFrame with NaN for missing columns, numeric types
+        enforced, and rows with missing coordinates dropped.
     """
     out = df.copy()
 
-    out['g_r'] = out['gmag'] - out['rmag']
-    out['r_i'] = out['rmag'] - out['imag']
-    out['g_i'] = out['gmag'] - out['imag']
+    # Ensure all expected columns exist
+    for col in COLUMNS:
+        if col not in out.columns:
+            out[col] = np.nan
+
+    # Numeric coercion
+    numeric_cols = ["RA", "Dec", *MAG_COLS]
+    out = coerce_to_numeric(out, numeric_cols)
+
+    # Drop rows with missing coordinates
+    out = out.dropna(subset=["RA", "Dec"]).reset_index(drop=True)
+
+    # Set source
+    if source is not None:
+        out["phot_source"] = source
 
     return out
 
 
-def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Adds derived photometric columns to the DataFrame:
-      - Luminosity weights in g, r, i bands
-      - Colors: g-r, r-i, g-i
+def _clean_magnitudes(df: pd.DataFrame) -> pd.DataFrame:
+    """Replace magnitude sentinel values (-9999, inf, etc.) with NaN.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Input photometric DataFrame.
+        Photometry DataFrame with magnitude columns.
 
     Returns
     -------
-    out : pd.DataFrame
-        Modified DataFrame with added derived columns.
+    pd.DataFrame
+        Cleaned DataFrame with sentinels replaced by NaN.
     """
     out = df.copy()
-    out = coerce_to_numeric(out, list(MAG_COLS))
 
-    out = add_luminosity_weights(out)
-    out = add_colors(out)
+    for col in MAG_COLS:
+        if col not in out.columns:
+            continue
+        out[col] = pd.to_numeric(out[col], errors="coerce")
+        # Replace sentinel values
+        out.loc[out[col].isin(MAGNITUDE_SENTINELS), col] = np.nan
+        # Replace inf
+        out[col] = out[col].replace([np.inf, -np.inf], np.nan)
+
     return out
-
-
-def combine_photometry(
-        legacy_df: pd.DataFrame,
-        pan_df: pd.DataFrame,
-    ) -> pd.DataFrame:
-    """
-    Combine Legacy and Pan-STARRS photometry into a single CSV, keeping all entries.
-    Adds a 'source' column to indicate catalog provenance.
-
-    Parameters
-    ----------
-    legacy_df : pd.DataFrame
-        Legacy photometry DataFrame.
-    pan_df : pd.DataFrame
-        Pan-STARRS photometry DataFrame.
-
-    Returns
-    -------
-    combined_df : pd.DataFrame
-        Concatenated DataFrame with all required columns.
-    """
-
-    # Standardize both DataFrames
-    legacy = _standardize_phot_df(legacy_df)
-    pan = _standardize_phot_df(pan_df)
-
-    combined = pd.concat([legacy, pan], ignore_index=True)
-
-    return combined
-
-
-# ------------------------------------
-# Main Pipeline Function
-# ------------------------------------
-
-def run_photometry_pipeline(
-        cluster: Cluster,
-        *,
-        radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
-        retrieve_legacy: bool = True,
-        retrieve_panstarrs: bool = True,
-    ) -> None:
-    """
-    Pipeline to query Pan-STARRS and Legacy photometry, and output individual and combined catalogs.
-
-    Parameters
-    ----------
-    cluster : Cluster
-        Cluster object containing all necessary metadata (paths, coordinates, etc.).
-    radius_arcmin : float
-        Search radius in arcminutes.
-    retrieve_legacy : bool
-        If True, query Legacy, else load existing CSV.
-    retrieve_panstarrs : bool
-        If True, query Pan-STARRS, else load existing CSV.
-    """
-    os.makedirs(cluster.photometry_path, exist_ok=True)
-    panstarrs_path = os.path.join(cluster.photometry_path, PANSTARRS_OUTFILE)
-    legacy_path = os.path.join(cluster.photometry_path, LEGACY_OUTFILE)
-    combined_path = os.path.join(cluster.photometry_path, COMBINED_OUTFILE)
-
-    coord = cluster.coords
-    print(f"Using coordinates: RA = {coord.ra.deg:.5f}, Dec = {coord.dec.deg:.5f}")
-
-    # Queries
-    if retrieve_panstarrs:
-        pan_df = query_panstarrs_phot(coord, radius_arcmin)
-    else:
-        pan_df = _open_or_build_phot_df(panstarrs_path)
-        print(f"Pan-STARRS photometry loaded from {panstarrs_path} ({len(pan_df)} rows)")
-
-    if retrieve_legacy:
-        legacy_df = query_legacy_phot(coord, radius_arcmin)
-    else:
-        legacy_df = _open_or_build_phot_df(legacy_path)
-        print(f"Legacy DR10 photometry loaded from {legacy_path} ({len(legacy_df)} rows)")
-
-    # Compute color and luminosity columns
-    pan_df = add_derived_columns(pan_df)
-    legacy_df = add_derived_columns(legacy_df)
-
-    # Save individual catalogs
-    if retrieve_panstarrs:
-        _save_photometry(pan_df, panstarrs_path)
-    if retrieve_legacy:
-        _save_photometry(legacy_df, legacy_path)
-
-    # Combine and save
-    combined_df = combine_photometry(legacy_df, pan_df)
-    _save_photometry(combined_df, combined_path)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Run archival photometry query for a galaxy cluster.")
-    parser.add_argument(
-        "cluster_id",
-        type=str,
-        help="Cluster ID (e.g. '1327') or full RMJ/Abell name."
-    )
-    parser.add_argument(
-        '-r',
-        '--radius',
-        type=float,
-        default=DEFAULT_RADIUS_ARCMIN,
-        help=f"Search radius in arcminutes (default: {DEFAULT_RADIUS_ARCMIN})"
-    )
-    parser.add_argument(
-        '-p',
-        '--path',
-        type=str,
-        default=None,
-        help="Base path for cluster science directories (default: cluster.py BASE_PATH)"
-    )
-    parser.add_argument(
-        '--get-legacy',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Whether to build Legacy catalog from query. (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    parser.add_argument(
-        '--get-panstarrs',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Build Pan-STARRS catalog from query (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    args = parser.parse_args()
-
-    cluster = Cluster(args.cluster_id, base_path=args.path)
-    cluster.populate()
-
-    run_photometry_pipeline(
-        cluster=cluster,
-        radius_arcmin=args.radius,
-        retrieve_legacy=args.get_legacy,
-        retrieve_panstarrs=args.get_panstarrs
-    )
-
-
-if __name__ == "__main__":
-    main()
