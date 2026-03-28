@@ -1317,8 +1317,10 @@ def plot_subcluster_regions_and_histograms(
         z_mean = vel_data[i][1]
         sigma_v = vel_data[i][2]
         color = colors[i] if colors[i] != 'white' else 'gainsboro'
-        z_bcg = subclusters[j].primary_bcg.z if subclusters[j].primary_bcg is not None else None
-        bcg_label = subclusters[j].display_label
+        # BCG redshift line: always use the primary BCG's z and label (not the group label)
+        primary = subclusters[j].primary_bcg
+        z_bcg = primary.z if primary is not None else None
+        bcg_label = primary.label if primary is not None else subclusters[j].label
 
         ax.hist(zs, bins=hist_bins, color=color, edgecolor='black')
         ax.axvline(z_mean, color='black', lw=1.5, linestyle='-', label=f"$\\bar{{z}}$ = {z_mean:.4f}")
