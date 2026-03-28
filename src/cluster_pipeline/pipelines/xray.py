@@ -244,32 +244,36 @@ def run_subcluster_analysis(
         except Exception as e:
             print(f"    Members + regions plot FAILED: {e}")
 
-        try:
-            plot_2panel_optical_contours(
-                cluster=cluster,
-                subclusters=subclusters,
-                save_plots=save_plots,
-                show_plots=show_plots,
-                save_path=save_path,
-            )
-            print("    2-panel optical contours: OK")
-        except Exception as e:
-            print(f"    2-panel optical contours FAILED: {e}")
+        for layout in ("vertical", "horizontal"):
+            try:
+                plot_2panel_optical_contours(
+                    cluster=cluster,
+                    subclusters=subclusters,
+                    layout=layout,
+                    save_plots=save_plots,
+                    show_plots=show_plots,
+                    save_path=save_path,
+                )
+                print(f"    2-panel optical contours ({layout}): OK")
+            except Exception as e:
+                print(f"    2-panel optical contours ({layout}) FAILED: {e}")
 
-        try:
-            plot_redshift_and_subclusters_figure(
-                cluster=cluster,
-                subclusters=subclusters,
-                spec_groups=spec_groups_combined,
-                phot_groups=phot_groups_combined,
-                **combined_kw,
-                save_plots=save_plots,
-                show_plots=show_plots,
-                save_path=save_path,
-            )
-            print("    Redshift + subclusters figure: OK")
-        except Exception as e:
-            print(f"    Redshift + subclusters figure FAILED: {e}")
+        for layout in ("vertical", "horizontal"):
+            try:
+                plot_redshift_and_subclusters_figure(
+                    cluster=cluster,
+                    subclusters=subclusters,
+                    spec_groups=spec_groups_combined,
+                    phot_groups=phot_groups_combined,
+                    layout=layout,
+                    **combined_kw,
+                    save_plots=save_plots,
+                    show_plots=show_plots,
+                    save_path=save_path,
+                )
+                print(f"    Redshift + subclusters ({layout}): OK")
+            except Exception as e:
+                print(f"    Redshift + subclusters ({layout}) FAILED: {e}")
 
         try:
             plot_stacked_redshift_histograms(
@@ -284,20 +288,22 @@ def run_subcluster_analysis(
         except Exception as e:
             print(f"    Stacked histograms FAILED: {e}")
 
-        try:
-            plot_3panel_optical_subclusters_figure(
-                cluster=cluster,
-                subclusters=subclusters,
-                spec_groups=spec_groups_combined,
-                phot_groups=phot_groups_combined,
-                **combined_kw,
-                save_plots=save_plots,
-                show_plots=show_plots,
-                save_path=save_path,
-            )
-            print("    3-panel optical subclusters: OK")
-        except Exception as e:
-            print(f"    3-panel optical subclusters FAILED: {e}")
+        for layout in ("vertical", "horizontal"):
+            try:
+                plot_3panel_optical_subclusters_figure(
+                    cluster=cluster,
+                    subclusters=subclusters,
+                    spec_groups=spec_groups_combined,
+                    phot_groups=phot_groups_combined,
+                    layout=layout,
+                    **combined_kw,
+                    save_plots=save_plots,
+                    show_plots=show_plots,
+                    save_path=save_path,
+                )
+                print(f"    3-panel optical subclusters ({layout}): OK")
+            except Exception as e:
+                print(f"    3-panel optical subclusters ({layout}) FAILED: {e}")
 
         try:
             plot_combined_4panel_figure(

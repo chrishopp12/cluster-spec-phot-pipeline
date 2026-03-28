@@ -382,7 +382,8 @@ def plot_redshift_and_subclusters_figure(
 
 
     if save_path is not None and save_plots:
-        save_file = os.path.join(save_path, "subcluster_z_scatter.pdf") if os.path.isdir(save_path) else save_path
+        suffix = "_hor" if layout == "horizontal" else "_vert"
+        save_file = os.path.join(save_path, f"subcluster_z_scatter{suffix}.pdf") if os.path.isdir(save_path) else save_path
         fig.savefig(save_file, bbox_inches='tight')
     if show_plots:
         plt.show()
@@ -907,7 +908,8 @@ def plot_2panel_optical_contours(
 
     # plt.tight_layout()
     if save_path is not None and save_plots:
-        save_file = os.path.join(save_path, "subcluster_z_scatter.pdf") if os.path.isdir(save_path) else save_path
+        suffix = "_hor" if layout == "horizontal" else "_vert"
+        save_file = os.path.join(save_path, f"2panel_optical_contours{suffix}.pdf") if os.path.isdir(save_path) else save_path
         fig.savefig(save_file, dpi=450)
     if show_plots:
         plt.show()
@@ -1062,7 +1064,8 @@ def plot_3panel_optical_subclusters_figure(
         fig.subplots_adjust(hspace=0.08, top=0.98, bottom=0.07, left=0.1, right=0.99)
 
     if save_plots and save_path is not None:
-        save_file = os.path.join(save_path, "cluster_3panel.pdf") if os.path.isdir(save_path) else save_path
+        suffix = "_hor" if layout == "horizontal" else "_vert"
+        save_file = os.path.join(save_path, f"cluster_3panel{suffix}.pdf") if os.path.isdir(save_path) else save_path
         fig.savefig(save_file, bbox_inches='tight')
     if show_plots:
         plt.show()
