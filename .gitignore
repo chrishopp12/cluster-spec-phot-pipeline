@@ -28,3 +28,4 @@ __pycache__/
 # -----------------------
 .env
 config.*
+src/cluster_pipeline.egg-info/
