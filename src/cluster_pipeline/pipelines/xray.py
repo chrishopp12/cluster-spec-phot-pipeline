@@ -1,4 +1,29 @@
-"""X-ray pipeline driver: subcluster analysis and visualization."""
+#!/usr/bin/env python3
+"""
+xray.py
+
+X-ray Pipeline Driver: Subcluster Analysis and Visualization
+---------------------------------------------------------
+
+Orchestrates the X-ray analysis pipeline: redshift processing, subcluster
+member assignment, statistical analysis, and multi-panel figure generation.
+
+Entry points:
+  - ``run_xray(cluster, subclusters)`` — clean entry point with graceful
+    skip if no X-ray data is available
+  - ``analyze_cluster(...)`` — legacy orchestrator (v1 interface, being
+    migrated to use Subcluster objects)
+
+Requirements:
+  - All cluster_pipeline subpackages
+
+Notes:
+  - X-ray processing is independent of Stages 1-4. It only needs
+    X-ray FITS data and the cluster member catalogs.
+  - If no X-ray FITS file exists, the pipeline skips X-ray image
+    processing and contour generation but can still run subcluster
+    analysis and redshift-based plots.
+"""
 
 from __future__ import annotations
 
@@ -42,9 +67,68 @@ from cluster_pipeline.plotting.subclusters import (
 from cluster_pipeline.plotting.xray import plot_redshift_overlay, make_plots
 
 
-# ============================================================
-# analyze_cluster  (extracted from process_subclusters.py)
-# ============================================================
+# ====================================================================
+# Clean entry point
+# ====================================================================
+
+def run_xray(
+    cluster: Cluster,
+    subclusters: list | None = None,
+    *,
+    save_plots: bool = True,
+    show_plots: bool = False,
+) -> None:
+    """Run X-ray processing and subcluster analysis for a cluster.
+
+    This is the clean entry point for the X-ray pipeline stage.
+    Gracefully skips X-ray image processing if no FITS data exists,
+    but still runs subcluster analysis (redshift-based).
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object with paths and metadata.
+    subclusters : list[Subcluster] or None
+        Subcluster objects from Stage 5. If None, attempts to build
+        from config.
+    save_plots : bool
+        Save generated figures. [default: True]
+    show_plots : bool
+        Display figures interactively. [default: False]
+
+    Notes
+    -----
+    - X-ray FITS file expected at ``cluster.xray_file``.
+    - If no X-ray data, skips image processing and contour generation
+      but still runs redshift analysis and subcluster statistics.
+    """
+    has_xray = os.path.isfile(cluster.xray_file)
+
+    if has_xray:
+        print(f"\nX-ray data found: {cluster.xray_file}")
+    else:
+        print(f"\nNo X-ray data at {cluster.xray_file} — skipping X-ray image processing")
+
+    # Redshift processing (independent of X-ray)
+    print("\n--- Redshift processing ---")
+    process_redshifts(cluster, save_plots=save_plots, show_plots=show_plots)
+
+    # X-ray image processing (only if FITS exists)
+    if has_xray:
+        print("\n--- X-ray image processing ---")
+        make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
+
+    # Subcluster analysis
+    if subclusters is not None:
+        print(f"\n--- Subcluster analysis ({len(subclusters)} subclusters) ---")
+        # TODO: Wire analyze_cluster to use list[Subcluster] natively
+        #       For now, this is a placeholder for the full orchestration
+        print("  Subcluster analysis orchestration: TODO (wire to refactored stages)")
+
+
+# ====================================================================
+# analyze_cluster  (legacy orchestrator — being migrated)
+# ====================================================================
 
 def analyze_cluster(
         cluster,
@@ -125,7 +209,7 @@ def analyze_cluster(
 
     if plot_alt_regions:
         # Save file based on subclusters used.
-        subclust_ids = [str(sub['bcg_id']) for sub in subcluster_configs]
+        subclust_ids = [str(sub.bcg_id if hasattr(sub, 'bcg_id') else sub['bcg_id']) for sub in subcluster_configs]
         subclust_part = "_".join(subclust_ids)
         filename = f"{cluster.identifier}_subcluster_histograms_{subclust_part}.pdf"
         save_file = os.path.join(save_path, filename)

@@ -1,4 +1,27 @@
-"""X-ray analysis: surface brightness profiles, gradient magnitude, unsharp masking."""
+#!/usr/bin/env python3
+"""
+analysis.py
+
+X-ray Analysis: Surface Brightness Profiles and Diagnostic Panels
+---------------------------------------------------------
+
+Higher-level X-ray analysis routines that operate on FITS images:
+  - Surface brightness profile extraction between two sky/pixel positions
+  - Gaussian gradient magnitude (GGM) and unsharp masking panels
+
+These functions load FITS data internally and produce diagnostic plots.
+They are independent of the optical pipeline stages (1-7) and only
+require X-ray FITS images and WCS information.
+
+Requirements:
+  - numpy, scipy, astropy, reproject, matplotlib
+
+Notes:
+  - ``profile_between_points`` supports both sky coordinates and pixel positions.
+  - ``gaussian_grad_magnitude`` produces a multi-panel figure with smoothed
+    X-ray, gradient magnitude, and unsharp masking. The analysis and
+    visualization are intertwined in this function (not yet separated).
+"""
 
 from __future__ import annotations
 
