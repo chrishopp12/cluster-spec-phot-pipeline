@@ -137,6 +137,17 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         from cluster_pipeline.pipelines.xray import run_xray
 
         click.echo("\n--- Stage 5: Subcluster Building ---")
+
+        # Inject CLI subcluster IDs into config if provided
+        if subclusters:
+            sc_dict = {}
+            for sid in subclusters:
+                entry = {"bcg_id": sid}
+                if radius is not None:
+                    entry["radius_mpc"] = radius
+                sc_dict[sid] = entry
+            cfg["subclusters"] = sc_dict
+
         subcluster_list = build_subclusters(cluster, bcgs=bcgs, config=cfg)
 
         click.echo("\n--- Stages 6-8: X-ray Analysis ---")
