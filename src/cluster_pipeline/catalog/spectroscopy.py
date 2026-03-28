@@ -1,22 +1,49 @@
-"""Stage 1: Archival spectroscopic redshift retrieval.
+#!/usr/bin/env python3
+"""
+spectroscopy.py
 
-Queries NED, SDSS DR18, and DESI DR1 for spectroscopic redshifts
-around a cluster position. Deduplicates with priority DESI > SDSS > NED.
+Stage 1: Spectroscopic Redshift Retrieval
+---------------------------------------------------------
 
-Reads:  Cluster (coords, paths)
-Produces:
-    Redshifts/ned.csv       — archived raw NED query
-    Redshifts/sdss.csv      — archived raw SDSS query
-    Redshifts/desi.csv      — archived raw DESI query
-    Redshifts/archival_z.csv — merged, deduplicated
-Returns: DataFrame[RA, Dec, z, sigma_z, spec_source]
+Queries archival spectroscopic redshift catalogs around a cluster position and
+loads user-supplied Keck/DEIMOS spectra. Deduplicates with priority
+DESI > SDSS > NED, then appends user spectra as the highest-fidelity source.
+
+Archival sources:
+  - NED (via astroquery.ned)
+  - SDSS DR18 (via CasJobs REST API)
+  - DESI DR1 (via NOIRLab TAP and Q3C_RADIAL_QUERY)
+
+User spectra:
+  - Keck/DEIMOS zdump*.txt files (4-column: RA, Dec, z, sigma_z)
+
+Data products (all archived individually before merging):
+  - Redshifts/ned.csv         Raw NED query result
+  - Redshifts/sdss.csv        Raw SDSS query result
+  - Redshifts/desi.csv        Raw DESI query result
+  - Redshifts/deimos.csv      User DEIMOS spectra
+  - Redshifts/archival_z.csv  Merged + deduplicated archival catalog
+
+Column convention:
+  RA, Dec, z, sigma_z, spec_source
+
+Requirements:
+  - astropy, astroquery, numpy, pandas, requests
+
+Notes:
+  - Each archival source is queried independently; a failure in one does not
+    prevent others from running.
+  - SDSS is skipped if CasJobs credentials are not provided.
+  - Deduplication uses positional matching with configurable angular tolerance.
+  - User spectra (DEIMOS) are appended after archival deduplication and are
+    NOT deduplicated against archival sources (they are the highest-priority data).
 """
 
 from __future__ import annotations
 
 import os
+import glob
 import time
-from getpass import getpass
 from io import StringIO
 
 import pandas as pd
@@ -29,6 +56,7 @@ from astroquery.ipac.ned import Ned
 from astroquery.utils.tap.core import TapPlus
 
 from cluster_pipeline.models.cluster import Cluster
+from cluster_pipeline.utils.coordinates import make_skycoord
 
 # ------------------------------------
 # Constants
@@ -36,8 +64,8 @@ from cluster_pipeline.models.cluster import Cluster
 DEFAULT_RADIUS_ARCMIN = 10.0
 DEFAULT_TOLERANCE_DEG = 2.0 / 3600.0  # 2 arcsec
 DEFAULT_MAX_RETRIES = 5
-DEFAULT_INITIAL_WAIT = 5
-DEFAULT_TIMEOUT = 300
+DEFAULT_INITIAL_WAIT = 5  # seconds
+DEFAULT_TIMEOUT = 300  # seconds
 DEFAULT_SDSS_TOP_N = 100
 
 SDSS_URL = "https://skyserver.sdss.org/CasJobs/RestApi/contexts/DR18/query"
@@ -46,9 +74,9 @@ DESI_URL = "https://datalab.noirlab.edu/tap"
 COLUMNS = ["RA", "Dec", "z", "sigma_z", "spec_source"]
 
 
-# ------------------------------------
+# ====================================================================
 # Public interface
-# ------------------------------------
+# ====================================================================
 
 def run_spectroscopy(
     cluster: Cluster,
@@ -58,31 +86,45 @@ def run_spectroscopy(
     tolerance_deg: float = DEFAULT_TOLERANCE_DEG,
     casjobs_user: str | None = None,
     casjobs_password: str | None = None,
+    load_deimos: bool = True,
 ) -> pd.DataFrame:
     """Query archival spectroscopic redshifts and return a deduplicated catalog.
 
-    Each source is queried independently — a failure in one does not
-    prevent the others from running.
+    Each archival source is queried independently — a failure in one does not
+    prevent the others from running. User spectra (DEIMOS) are loaded from
+    zdump*.txt files and appended without deduplication (highest priority).
 
     Parameters
     ----------
     cluster : Cluster
-        Must have coords set (ra, dec).
+        Must have ``coords`` set (ra, dec) and valid ``redshift_path``.
     sources : list of str, optional
-        Which archives to query. Default: ["ned", "sdss", "desi"].
-        SDSS is skipped if credentials are not provided.
+        Which archival sources to query. Default: ``["ned", "sdss", "desi"]``.
+        SDSS is automatically skipped if credentials are not available.
     radius_arcmin : float
-        Search radius in arcminutes.
+        Search radius in arcminutes. [default: 10.0]
     tolerance_deg : float
-        Angular tolerance for deduplication.
-    casjobs_user, casjobs_password : str, optional
-        SDSS CasJobs credentials. If None, reads from env vars
-        CASJOBS_USER / CASJOBS_PW. If still None, SDSS is skipped.
+        Angular tolerance for positional deduplication in degrees. [default: 2 arcsec]
+    casjobs_user : str or None
+        SDSS CasJobs username. Falls back to env ``CASJOBS_USER``.
+    casjobs_password : str or None
+        SDSS CasJobs password. Falls back to env ``CASJOBS_PW``.
+    load_deimos : bool
+        Whether to load user DEIMOS spectra from zdump*.txt files. [default: True]
 
     Returns
     -------
-    DataFrame[RA, Dec, z, sigma_z, spec_source]
-        Deduplicated spectroscopic catalog. Priority: DESI > SDSS > NED.
+    combined : pd.DataFrame
+        Deduplicated spectroscopic catalog with columns:
+        ``RA, Dec, z, sigma_z, spec_source``.
+        Priority: DESI > SDSS > NED, with DEIMOS appended (highest fidelity).
+
+    Notes
+    -----
+    - Individual source catalogs are archived to Redshifts/{source}.csv before
+      any deduplication.
+    - The merged catalog is written to Redshifts/archival_z.csv.
+    - DEIMOS spectra are written to Redshifts/deimos.csv.
     """
     if cluster.coords is None:
         raise ValueError("Cluster coordinates not set. Cannot query spectroscopy.")
@@ -93,51 +135,118 @@ def run_spectroscopy(
     coord = cluster.coords
     cluster.ensure_directories()
 
-    print(f"Spectroscopy: RA={coord.ra.deg:.5f}, Dec={coord.dec.deg:.5f}, "
+    print(f"\nSpectroscopy: RA={coord.ra.deg:.5f}, Dec={coord.dec.deg:.5f}, "
           f"radius={radius_arcmin}', sources={sources}")
 
     # --- Resolve SDSS credentials ---
     user = casjobs_user or os.environ.get("CASJOBS_USER")
     password = casjobs_password or os.environ.get("CASJOBS_PW")
 
-    # --- Query each source independently ---
+    # --- Query each archival source independently ---
     catalogs: dict[str, pd.DataFrame] = {}
 
     if "ned" in sources:
-        catalogs["ned"] = _query_and_save(
+        catalogs["ned"] = _query_and_archive(
             "NED", cluster.redshift_path,
             lambda: query_ned(coord, radius_arcmin),
         )
 
     if "sdss" in sources:
         if user and password:
-            catalogs["sdss"] = _query_and_save(
+            catalogs["sdss"] = _query_and_archive(
                 "SDSS", cluster.redshift_path,
                 lambda: query_sdss(coord, radius_arcmin, user=user, password=password),
             )
         else:
-            print("  SDSS skipped (no CasJobs credentials)")
+            print("  SDSS: skipped (no CasJobs credentials)")
 
     if "desi" in sources:
-        catalogs["desi"] = _query_and_save(
+        catalogs["desi"] = _query_and_archive(
             "DESI", cluster.redshift_path,
             lambda: query_desi(coord, radius_arcmin),
         )
 
-    # --- Deduplicate: DESI > SDSS > NED ---
-    combined = _deduplicate_catalogs(catalogs, tolerance_deg)
+    # --- Deduplicate archival sources: DESI > SDSS > NED ---
+    archival = _deduplicate_catalogs(catalogs, tolerance_deg)
+
+    # --- Load user DEIMOS spectra ---
+    if load_deimos:
+        deimos_df = load_user_spectra(cluster)
+        if not deimos_df.empty:
+            archival = pd.concat([archival, deimos_df], ignore_index=True)
 
     # --- Save combined catalog ---
     output_path = os.path.join(cluster.redshift_path, "archival_z.csv")
-    combined.to_csv(output_path, index=False)
-    print(f"  Combined catalog: {len(combined)} sources → {output_path}")
+    archival.to_csv(output_path, index=False)
+    print(f"  Combined catalog: {len(archival)} sources → {output_path}")
 
-    return combined
+    return archival
 
 
-# ------------------------------------
-# Query functions
-# ------------------------------------
+# ====================================================================
+# User spectra (DEIMOS)
+# ====================================================================
+
+def load_user_spectra(cluster: Cluster) -> pd.DataFrame:
+    """Load Keck/DEIMOS spectroscopic redshifts from zdump*.txt files.
+
+    Reads all files matching ``zdump*.txt`` in the cluster's Redshifts/
+    directory. Each file is expected to have 4 columns: RA, Dec, z, sigma_z
+    (whitespace-delimited, no header).
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object with valid ``redshift_path``.
+
+    Returns
+    -------
+    deimos_df : pd.DataFrame
+        DataFrame with columns ``RA, Dec, z, sigma_z, spec_source``.
+        Empty DataFrame if no zdump files found or all fail to parse.
+
+    Notes
+    -----
+    - Archived to Redshifts/deimos.csv.
+    - Source column is set to ``"Deimos"``.
+    """
+    rows = []
+
+    zdump_pattern = os.path.join(cluster.redshift_path, "zdump*.txt")
+    zdump_files = sorted(glob.glob(zdump_pattern))
+
+    if not zdump_files:
+        return pd.DataFrame(columns=COLUMNS)
+
+    for file_path in zdump_files:
+        try:
+            data = np.loadtxt(file_path, unpack=True)
+            if data.ndim == 1:
+                data = data.reshape(4, -1)
+            for ra, dec, z, sigma_z in zip(*data):
+                rows.append({
+                    "RA": float(ra),
+                    "Dec": float(dec),
+                    "z": float(z),
+                    "sigma_z": float(sigma_z),
+                    "spec_source": "Deimos",
+                })
+        except Exception as e:
+            print(f"  Warning: failed to read {file_path}: {e}")
+
+    deimos_df = pd.DataFrame(rows, columns=COLUMNS)
+
+    if not deimos_df.empty:
+        deimos_path = os.path.join(cluster.redshift_path, "deimos.csv")
+        deimos_df.to_csv(deimos_path, index=False)
+        print(f"  DEIMOS: {len(deimos_df)} spectra → {deimos_path}")
+
+    return deimos_df
+
+
+# ====================================================================
+# Archival query functions
+# ====================================================================
 
 def query_ned(
     coord: SkyCoord,
@@ -147,7 +256,32 @@ def query_ned(
     initial_wait: int = DEFAULT_INITIAL_WAIT,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> pd.DataFrame:
-    """Query NED for spectroscopic galaxy redshifts around a coordinate."""
+    """Query NED for spectroscopic galaxy redshifts around a coordinate.
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Central search coordinate.
+    radius_arcmin : float
+        Search radius in arcminutes.
+    max_retries : int
+        Maximum query attempts with exponential backoff. [default: 5]
+    initial_wait : int
+        Initial wait between retries in seconds. [default: 5]
+    timeout : int
+        NED query timeout in seconds. [default: 300]
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Empty if no results or all attempts fail.
+
+    Notes
+    -----
+    - Filters to spectroscopic (SLS flag) galaxy (Type='G') redshifts only.
+    - NED does not provide per-object redshift uncertainties; sigma_z is set to 0.
+    """
     Ned.TIMEOUT = timeout
 
     for attempt in range(1, max_retries + 1):
@@ -170,7 +304,7 @@ def query_ned(
                 "RA": pd.to_numeric(filtered["RA"], errors="coerce"),
                 "Dec": pd.to_numeric(filtered["DEC"], errors="coerce"),
                 "z": pd.to_numeric(filtered["Redshift"], errors="coerce"),
-                "sigma_z": 0.0,  # NED does not provide redshift errors
+                "sigma_z": 0.0,
                 "spec_source": "NED",
             })
             return df.dropna(subset=["RA", "Dec", "z"]).reset_index(drop=True)
@@ -194,7 +328,34 @@ def query_sdss(
     top_n: int = DEFAULT_SDSS_TOP_N,
     timeout: int = DEFAULT_TIMEOUT,
 ) -> pd.DataFrame:
-    """Query SDSS DR18 via CasJobs REST API for galaxy redshifts."""
+    """Query SDSS DR18 via CasJobs REST API for galaxy redshifts.
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Central search coordinate.
+    radius_arcmin : float
+        Search radius in arcminutes.
+    user : str
+        CasJobs username.
+    password : str
+        CasJobs password.
+    top_n : int
+        Maximum number of results to return. [default: 100]
+    timeout : int
+        HTTP request timeout in seconds. [default: 300]
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Empty if query fails or returns no results.
+
+    Notes
+    -----
+    - SQL query uses a bounding box, then filters to true angular radius.
+    - Only returns objects classified as GALAXY.
+    """
     ra_deg = float(coord.ra.deg)
     dec_deg = float(coord.dec.deg)
     radius_deg = radius_arcmin / 60.0
@@ -230,12 +391,11 @@ def query_sdss(
         df = df.rename(columns={"ra": "RA", "dec": "Dec", "zerr": "sigma_z"})
         for col in ("RA", "Dec", "z", "sigma_z"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
         df = df.dropna(subset=["RA", "Dec", "z"]).reset_index(drop=True)
 
-        # Filter to actual radius (SQL uses a box)
-        coords = SkyCoord(df["RA"].to_numpy(), df["Dec"].to_numpy(), unit="deg")
-        df = df[coords.separation(coord).arcmin < radius_arcmin].reset_index(drop=True)
+        # SQL uses a box; filter to true angular radius
+        df_coords = make_skycoord(df["RA"].to_numpy(), df["Dec"].to_numpy())
+        df = df[df_coords.separation(coord).arcmin < radius_arcmin].reset_index(drop=True)
 
         df["spec_source"] = "SDSS"
         return df[COLUMNS].reset_index(drop=True)
@@ -249,7 +409,26 @@ def query_desi(
     coord: SkyCoord,
     radius_arcmin: float,
 ) -> pd.DataFrame:
-    """Query DESI DR1 via NOIRLab TAP for galaxy redshifts."""
+    """Query DESI DR1 via NOIRLab TAP for galaxy redshifts.
+
+    Parameters
+    ----------
+    coord : SkyCoord
+        Central search coordinate.
+    radius_arcmin : float
+        Search radius in arcminutes.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Empty if query fails or returns no results.
+
+    Notes
+    -----
+    - Uses Q3C_RADIAL_QUERY for efficient spatial indexing.
+    - Only returns objects with spectype='GALAXY'.
+    """
     ra_deg = float(coord.ra.deg)
     dec_deg = float(coord.dec.deg)
     radius_deg = radius_arcmin / 60.0
@@ -273,8 +452,8 @@ def query_desi(
         df = df.rename(columns={"mean_fiber_ra": "RA", "mean_fiber_dec": "Dec", "zerr": "sigma_z"})
         for col in ("RA", "Dec", "z", "sigma_z"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
         df = df.dropna(subset=["RA", "Dec", "z"]).reset_index(drop=True)
+
         df["spec_source"] = "DESI"
         return df[COLUMNS].reset_index(drop=True)
 
@@ -283,30 +462,58 @@ def query_desi(
         return pd.DataFrame(columns=COLUMNS)
 
 
-# ------------------------------------
+# ====================================================================
 # Deduplication
-# ------------------------------------
+# ====================================================================
 
 def filter_duplicates(
     df: pd.DataFrame,
     ref_coords: SkyCoord | None,
     tol_deg: float,
 ) -> pd.DataFrame:
-    """Remove rows from df that are within tol_deg of any ref_coords."""
+    """Remove rows from ``df`` that fall within ``tol_deg`` of any ``ref_coords``.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must have ``RA`` and ``Dec`` columns (degrees).
+    ref_coords : SkyCoord or None
+        Reference catalog positions. If None or empty, returns df unchanged.
+    tol_deg : float
+        Angular tolerance in degrees.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered DataFrame with positional duplicates removed.
+    """
     if df.empty or ref_coords is None or len(ref_coords) == 0:
         return df.reset_index(drop=True)
 
-    df_coords = SkyCoord(df["RA"].to_numpy(), df["Dec"].to_numpy(), unit="deg")
+    df_coords = make_skycoord(df["RA"].to_numpy(), df["Dec"].to_numpy())
     _, sep2d, _ = df_coords.match_to_catalog_sky(ref_coords)
     return df[sep2d > (tol_deg * u.deg)].reset_index(drop=True)
 
 
 def deduplicate_self(df: pd.DataFrame, tol_deg: float) -> pd.DataFrame:
-    """Remove near-duplicate rows within a DataFrame. Keeps first occurrence."""
+    """Remove near-duplicate rows within a DataFrame. Keeps first occurrence.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must have ``RA`` and ``Dec`` columns (degrees).
+    tol_deg : float
+        Angular separation in degrees below which sources are considered duplicates.
+
+    Returns
+    -------
+    pd.DataFrame
+        Deduplicated DataFrame.
+    """
     if df.empty or len(df) == 1:
         return df.copy()
 
-    coords = SkyCoord(df["RA"].to_numpy(), df["Dec"].to_numpy(), unit="deg")
+    coords = make_skycoord(df["RA"].to_numpy(), df["Dec"].to_numpy())
     keep = np.ones(len(df), dtype=bool)
 
     for i in range(len(df) - 1):
@@ -319,16 +526,31 @@ def deduplicate_self(df: pd.DataFrame, tol_deg: float) -> pd.DataFrame:
     return df[keep].reset_index(drop=True)
 
 
-# ------------------------------------
+# ====================================================================
 # Internal helpers
-# ------------------------------------
+# ====================================================================
 
-def _query_and_save(
+def _query_and_archive(
     name: str,
     output_dir: str,
     query_fn,
 ) -> pd.DataFrame:
-    """Run a query function, save the raw result, return the DataFrame."""
+    """Run a query function, archive the raw result to CSV, return the DataFrame.
+
+    Parameters
+    ----------
+    name : str
+        Source name (e.g., "NED", "SDSS", "DESI") — used for filename and logging.
+    output_dir : str
+        Directory to write the archived CSV.
+    query_fn : callable
+        Zero-argument callable that returns a DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        Query result (also archived to ``{output_dir}/{name.lower()}.csv``).
+    """
     try:
         df = query_fn()
         output_path = os.path.join(output_dir, f"{name.lower()}.csv")
@@ -344,7 +566,23 @@ def _deduplicate_catalogs(
     catalogs: dict[str, pd.DataFrame],
     tol_deg: float,
 ) -> pd.DataFrame:
-    """Deduplicate across catalogs with priority DESI > SDSS > NED."""
+    """Deduplicate across archival catalogs with priority DESI > SDSS > NED.
+
+    Self-deduplicates each catalog first, then removes lower-priority sources
+    that positionally match higher-priority ones.
+
+    Parameters
+    ----------
+    catalogs : dict[str, DataFrame]
+        Keyed by source name (lowercase). Only "desi", "sdss", "ned" are processed.
+    tol_deg : float
+        Angular tolerance for deduplication in degrees.
+
+    Returns
+    -------
+    pd.DataFrame
+        Merged, deduplicated catalog.
+    """
     priority = ["desi", "sdss", "ned"]
     cleaned: dict[str, pd.DataFrame] = {}
 
@@ -355,11 +593,12 @@ def _deduplicate_catalogs(
         df = catalogs[name]
         before = len(df)
         df = deduplicate_self(df, tol_deg)
-        if before - len(df) > 0:
-            print(f"  {name.upper()}: {before - len(df)} internal duplicates removed")
+        removed = before - len(df)
+        if removed > 0:
+            print(f"  {name.upper()}: {removed} internal duplicates removed")
         cleaned[name] = df
 
-    # Cross-deduplicate: remove lower-priority sources that match higher-priority
+    # Cross-deduplicate: lower-priority sources removed if they match higher-priority
     accumulated_coords: SkyCoord | None = None
     final_parts: list[pd.DataFrame] = []
 
@@ -377,16 +616,15 @@ def _deduplicate_catalogs(
 
         final_parts.append(df)
 
-        # Update accumulated coords
+        # Build up the accumulated reference catalog
         if not df.empty:
-            new_coords = SkyCoord(df["RA"].to_numpy(), df["Dec"].to_numpy(), unit="deg")
+            new_coords = make_skycoord(df["RA"].to_numpy(), df["Dec"].to_numpy())
             if accumulated_coords is None:
                 accumulated_coords = new_coords
             else:
-                accumulated_coords = SkyCoord(
+                accumulated_coords = make_skycoord(
                     np.concatenate([accumulated_coords.ra.deg, new_coords.ra.deg]),
                     np.concatenate([accumulated_coords.dec.deg, new_coords.dec.deg]),
-                    unit="deg",
                 )
 
     if not final_parts:
@@ -396,7 +634,20 @@ def _deduplicate_catalogs(
 
 
 def _sdss_ra_wrap(ra_deg: float, radius_deg: float) -> str:
-    """SQL WHERE clause for RA that handles the 0/360 wrap."""
+    """Generate SQL WHERE clause for RA that handles the 0/360 degree wrap.
+
+    Parameters
+    ----------
+    ra_deg : float
+        Right ascension of the search center in degrees.
+    radius_deg : float
+        Search radius in degrees.
+
+    Returns
+    -------
+    str
+        SQL WHERE clause fragment for RA filtering.
+    """
     ra_min = ra_deg - radius_deg
     ra_max = ra_deg + radius_deg
 
