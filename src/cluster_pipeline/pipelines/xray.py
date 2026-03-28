@@ -246,6 +246,59 @@ def run_subcluster_analysis(
         except Exception as e:
             print(f"    Stacked histograms FAILED: {e}")
 
+        try:
+            plot_3panel_optical_subclusters_figure(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                phot_groups=phot_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    3-panel optical subclusters: OK")
+        except Exception as e:
+            print(f"    3-panel optical subclusters FAILED: {e}")
+
+        try:
+            plot_combined_4panel_figure(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                phot_groups=phot_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Combined 4-panel figure: OK")
+        except Exception as e:
+            print(f"    Combined 4-panel figure FAILED: {e}")
+
+        try:
+            plot_redshift_histogram_heatmap(
+                cluster=cluster,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Redshift histogram heatmap: OK")
+        except Exception as e:
+            print(f"    Redshift histogram heatmap FAILED: {e}")
+
+        try:
+            plot_subcluster_regions_and_histograms(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                phot_groups=phot_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Regions + histograms: OK")
+        except Exception as e:
+            print(f"    Regions + histograms FAILED: {e}")
+
     elif subclusters is not None and len(subclusters) < 2:
         print(f"\n  Only {len(subclusters)} subcluster — need at least 2 for bisector analysis")
 
