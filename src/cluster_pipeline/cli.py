@@ -111,7 +111,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     if "phot" in stages:
         from cluster_pipeline.catalog.photometry import run_photometry
         click.echo("\n--- Stage 2: Photometry ---")
-        phot_dfs = run_photometry(cluster, surveys=[survey or cluster.survey])
+        phot_dfs = run_photometry(cluster, surveys=["legacy", "panstarrs"])
 
     # --- Stage 3: Matching ---
     bcgs = None
