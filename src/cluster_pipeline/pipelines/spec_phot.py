@@ -93,9 +93,9 @@ import argparse
 from getpass import getpass
 import json
 
-from cluster_pipeline.catalog.spectroscopy import run_redshift_pipeline
-from cluster_pipeline.catalog.photometry import run_photometry_pipeline
-from cluster_pipeline.catalog.matching import build_redshift_catalog
+from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
+from cluster_pipeline.catalog.photometry import run_photometry
+from cluster_pipeline.catalog.matching import run_matching
 from cluster_pipeline.catalog.redsequence import run_cmd_pipeline
 from cluster_pipeline.plotting.cmd import run_cluster_plots
 from cluster_pipeline.utils import str2bool
@@ -265,11 +265,10 @@ def run_full_pipeline(
             casjobs_user,
             casjobs_password
         )
-        run_redshift_pipeline(
-            cluster=cluster,
-            user=casjobs_user_resolved,
-            password=casjobs_password_resolved,
-            **redshift_kwargs,
+        run_spectroscopy(
+            cluster,
+            casjobs_user=casjobs_user_resolved,
+            casjobs_password=casjobs_password_resolved,
         )
     else:
         print("\n--- Skipping archival redshift pipeline ---")
@@ -278,9 +277,8 @@ def run_full_pipeline(
     # Step 2: Photometry
     if not skip_photometry:
         print("\n--- Running archival photometry pipeline ---")
-        run_photometry_pipeline(
-            cluster=cluster,
-            **photometry_kwargs,
+        run_photometry(
+            cluster,
         )
     else:
         print("\n--- Skipping archival photometry pipeline ---")
@@ -289,10 +287,9 @@ def run_full_pipeline(
     # Step 3: Catalogs
     if not skip_catalogs:
         print("\n--- Running catalog builder pipeline ---")
-        build_redshift_catalog(
-            cluster=cluster,
-            manual_list=manual_list,
-            **catalog_kwargs,
+        run_matching(
+            cluster,
+            verbose=True,
         )
     else:
         print("\n--- Skipping catalog builder pipeline ---")
