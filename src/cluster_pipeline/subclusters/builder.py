@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import pandas as pd
+
 from cluster_pipeline.models.cluster import Cluster
 from cluster_pipeline.models.bcg import BCG
 from cluster_pipeline.models.subcluster import Subcluster
@@ -172,6 +174,26 @@ def _load_bcgs(
         lookup = {}
         for bid, bcfg in bcg_section.items():
             lookup[int(bid)] = BCG.from_config(int(bid), bcfg)
+
+        # Enrich with matched data from BCGs.csv (redshifts, photometry)
+        try:
+            bcg_df = read_bcg_csv(cluster)
+            if not bcg_df.empty:
+                for _, row in bcg_df.iterrows():
+                    bid = int(row.get("BCG_priority", 0))
+                    if bid in lookup:
+                        bcg = lookup[bid]
+                        # Fill missing fields from CSV (CSV has matched spec+phot)
+                        if bcg.z is None and pd.notna(row.get("z")):
+                            bcg.z = float(row["z"])
+                        if bcg.sigma_z is None and pd.notna(row.get("sigma_z")):
+                            bcg.sigma_z = float(row["sigma_z"])
+                        if bcg.probability is None and pd.notna(row.get("BCG_probability")):
+                            bcg.probability = float(row["BCG_probability"])
+                log.debug("Enriched BCGs with matched data from BCGs.csv")
+        except Exception:
+            pass  # BCGs.csv may not exist yet on first run
+
         return lookup
 
     # Source 3: BCGs.csv
@@ -347,9 +369,20 @@ def _apply_groups(
         sc.group_color = None
 
     # -- Config-defined groups --------------------------------------
-    for gid, gcfg in group_configs.items():
-        members = [int(m) for m in gcfg.get("members", [])]
-        _assign_group(str(gid), members, gcfg, by_id, bcg_lookup, **kwargs)
+    # groups can be a list (from YAML) or a dict (legacy)
+    if isinstance(group_configs, list):
+        for gcfg in group_configs:
+            members = [int(m) for m in gcfg.get("members", [])]
+            primary = gcfg.get("primary_bcg", members[0] if members else None)
+            gid = _group_id_from_members(members)
+            # Reorder so primary is first (dominant)
+            if primary in members:
+                members = [primary] + [m for m in members if m != primary]
+            _assign_group(gid, members, gcfg, by_id, bcg_lookup, **kwargs)
+    elif isinstance(group_configs, dict):
+        for gid, gcfg in group_configs.items():
+            members = [int(m) for m in gcfg.get("members", [])]
+            _assign_group(str(gid), members, gcfg, by_id, bcg_lookup, **kwargs)
 
     # -- Legacy combined kwarg (e.g., ["1+4", "2+5"]) ---------------
     combined_groups = _parse_combined_groups(combined_kwarg)
