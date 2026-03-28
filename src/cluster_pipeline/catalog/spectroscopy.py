@@ -21,8 +21,12 @@ Data products (all archived individually before merging):
   - Redshifts/ned.csv         Raw NED query result
   - Redshifts/sdss.csv        Raw SDSS query result
   - Redshifts/desi.csv        Raw DESI query result
-  - Redshifts/deimos.csv      User DEIMOS spectra
-  - Redshifts/archival_z.csv  Merged + deduplicated archival catalog
+  - Redshifts/deimos.csv      User DEIMOS spectra (separate from archival)
+  - Redshifts/archival_z.csv  Merged + deduplicated archival catalog (NO user spectra)
+
+The archival_z.csv file is used by other group members in their own pipelines.
+DEIMOS spectra are merged with archival data in Stage 3 (catalog matching),
+where combined_redshifts.csv is produced with DEIMOS at highest priority.
 
 Column convention:
   RA, Dec, z, sigma_z, spec_source
@@ -87,12 +91,12 @@ def run_spectroscopy(
     casjobs_user: str | None = None,
     casjobs_password: str | None = None,
     load_deimos: bool = True,
-) -> pd.DataFrame:
-    """Query archival spectroscopic redshifts and return a deduplicated catalog.
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Query archival spectroscopic redshifts and load user spectra.
 
     Each archival source is queried independently — a failure in one does not
-    prevent the others from running. User spectra (DEIMOS) are loaded from
-    zdump*.txt files and appended without deduplication (highest priority).
+    prevent the others from running. User spectra (DEIMOS) are loaded and
+    archived separately.
 
     Parameters
     ----------
@@ -114,17 +118,23 @@ def run_spectroscopy(
 
     Returns
     -------
-    combined : pd.DataFrame
-        Deduplicated spectroscopic catalog with columns:
-        ``RA, Dec, z, sigma_z, spec_source``.
-        Priority: DESI > SDSS > NED, with DEIMOS appended (highest fidelity).
+    archival_df : pd.DataFrame
+        Deduplicated archival catalog (NED + SDSS + DESI only).
+        Columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Priority: DESI > SDSS > NED.
+    deimos_df : pd.DataFrame
+        User DEIMOS spectra (separate, not merged into archival).
+        Columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Empty DataFrame if no zdump files or ``load_deimos=False``.
 
     Notes
     -----
-    - Individual source catalogs are archived to Redshifts/{source}.csv before
+    - Individual source catalogs archived to Redshifts/{source}.csv before
       any deduplication.
-    - The merged catalog is written to Redshifts/archival_z.csv.
-    - DEIMOS spectra are written to Redshifts/deimos.csv.
+    - Archival catalog written to Redshifts/archival_z.csv (no user spectra).
+    - DEIMOS spectra written to Redshifts/deimos.csv.
+    - Merging archival + DEIMOS into combined_redshifts.csv happens in
+      Stage 3 (catalog matching), where DEIMOS gets highest priority.
     """
     if cluster.coords is None:
         raise ValueError("Cluster coordinates not set. Cannot query spectroscopy.")
@@ -167,20 +177,19 @@ def run_spectroscopy(
         )
 
     # --- Deduplicate archival sources: DESI > SDSS > NED ---
-    archival = _deduplicate_catalogs(catalogs, tolerance_deg)
+    archival_df = _deduplicate_catalogs(catalogs, tolerance_deg)
 
-    # --- Load user DEIMOS spectra ---
+    # --- Save archival catalog (no user spectra) ---
+    archival_path = os.path.join(cluster.redshift_path, "archival_z.csv")
+    archival_df.to_csv(archival_path, index=False)
+    print(f"  Archival catalog: {len(archival_df)} sources → {archival_path}")
+
+    # --- Load user DEIMOS spectra (archived separately) ---
+    deimos_df = pd.DataFrame(columns=COLUMNS)
     if load_deimos:
         deimos_df = load_user_spectra(cluster)
-        if not deimos_df.empty:
-            archival = pd.concat([archival, deimos_df], ignore_index=True)
 
-    # --- Save combined catalog ---
-    output_path = os.path.join(cluster.redshift_path, "archival_z.csv")
-    archival.to_csv(output_path, index=False)
-    print(f"  Combined catalog: {len(archival)} sources → {output_path}")
-
-    return archival
+    return archival_df, deimos_df
 
 
 # ====================================================================
