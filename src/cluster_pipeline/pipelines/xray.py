@@ -188,17 +188,54 @@ def run_subcluster_analysis(
             zm = stats.get("z_mean", 0)
             print(f"    Subcluster {label}: N_spec={n}, z_mean={zm:.4f}, sigma_v={sv:.1f} km/s")
 
+        # Build combined groups (default: each subcluster is its own group)
+        combined_configs = subclusters  # default: same as subclusters
+        spec_groups_combined = spec_groups
+        phot_groups_combined = phot_groups
+        combined_indices = None
+
+        # Check if any subclusters have group members defined
+        has_groups = any(len(sub.group_members) > 1 for sub in subclusters)
+        if has_groups:
+            # Use make_combined_groups to merge grouped subclusters
+            try:
+                # Extract combine pairs from subcluster group info
+                seen_groups = set()
+                combine_pairs = []
+                for sub in subclusters:
+                    if len(sub.group_members) > 1 and sub.group_id not in seen_groups:
+                        seen_groups.add(sub.group_id)
+                        combine_pairs.append(list(sub.group_members))
+
+                if combine_pairs:
+                    spec_groups_combined, phot_groups_combined, combined_indices = \
+                        make_combined_groups(cluster, spec_groups, phot_groups, subclusters,
+                                            combine_groups=combine_pairs)
+                    # Build combined configs (dominant subclusters only)
+                    combined_configs = [sub for sub in subclusters if sub.is_dominant]
+            except Exception as e:
+                print(f"  Warning: combined group building failed ({e}), using individual subclusters")
+
         # Stage 9: Subcluster plots
         print("\n  --- Subcluster plots ---")
         save_path = cluster.image_path
         os.makedirs(save_path, exist_ok=True)
 
+        # Common kwargs for plots that support combined groups
+        combined_kw = dict(
+            combined_configs=combined_configs,
+            spec_groups_combined=spec_groups_combined,
+            phot_groups_combined=phot_groups_combined,
+            combined_indices=combined_indices,
+        )
+
         try:
             plot_subcluster_members_and_regions(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
-                phot_groups=phot_groups,
+                spec_groups=spec_groups_combined,
+                phot_groups=phot_groups_combined,
+                **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
@@ -223,8 +260,9 @@ def run_subcluster_analysis(
             plot_redshift_and_subclusters_figure(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
-                phot_groups=phot_groups,
+                spec_groups=spec_groups_combined,
+                phot_groups=phot_groups_combined,
+                **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
@@ -237,7 +275,7 @@ def run_subcluster_analysis(
             plot_stacked_redshift_histograms(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
+                spec_groups=spec_groups_combined,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
@@ -250,8 +288,9 @@ def run_subcluster_analysis(
             plot_3panel_optical_subclusters_figure(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
-                phot_groups=phot_groups,
+                spec_groups=spec_groups_combined,
+                phot_groups=phot_groups_combined,
+                **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
@@ -264,8 +303,9 @@ def run_subcluster_analysis(
             plot_combined_4panel_figure(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
-                phot_groups=phot_groups,
+                spec_groups=spec_groups_combined,
+                phot_groups=phot_groups_combined,
+                **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
@@ -289,8 +329,9 @@ def run_subcluster_analysis(
             plot_subcluster_regions_and_histograms(
                 cluster=cluster,
                 subclusters=subclusters,
-                spec_groups=spec_groups,
-                phot_groups=phot_groups,
+                spec_groups=spec_groups_combined,
+                phot_groups=phot_groups_combined,
+                **combined_kw,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
