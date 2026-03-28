@@ -1,332 +1,561 @@
-"""Subcluster configuration building and persistence."""
+#!/usr/bin/env python3
+"""
+builder.py
+
+Stage 5: Subcluster Configuration Building
+---------------------------------------------------------
+
+Builds Subcluster objects from BCG candidates and configuration.
+
+Data products
+~~~~~~~~~~~~~
+- Returns ``list[Subcluster]`` with BCG roles set (no members yet).
+- Persistence is through ``Subcluster.to_config()`` / config.yaml,
+  **not** CSV files.
+
+Configuration sources (highest to lowest priority)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. Per-subcluster kwarg  (``color_2``, ``radius_3``)
+2. Global kwarg          (``color``, ``radius``)
+3. config.yaml value     (``config["subclusters"]``)
+4. Code default          (``DEFAULT_COLORS``, ``DEFAULT_RADIUS_MPC``, etc.)
+
+BCG sources (first match wins)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1. ``bcgs`` argument passed directly
+2. ``config["bcgs"]`` section in config.yaml
+3. ``BCGs.csv`` on disk (via ``read_bcg_csv``)
+"""
 
 from __future__ import annotations
 
-import os
+import logging
 from typing import Any
 
-import numpy as np
-import pandas as pd
-
-from astropy.coordinates import SkyCoord
-import astropy.units as u
-
-from cluster_pipeline.io.catalogs import read_bcg_csv, select_bcgs, bcg_basic_info, load_dataframes
+from cluster_pipeline.models.cluster import Cluster
+from cluster_pipeline.models.bcg import BCG
+from cluster_pipeline.models.subcluster import Subcluster
+from cluster_pipeline.io.catalogs import read_bcg_csv
+from cluster_pipeline.config import load_config
 from cluster_pipeline.constants import DEFAULT_COLORS, DEFAULT_LABELS, DEFAULT_RADIUS_MPC
 
+log = logging.getLogger(__name__)
 
-def build_subclusters(subclusters=(1,), cluster=None, **kwargs):
-    """
-    Build and update subcluster configuration for a given cluster.
 
-    Hierarchy of parameter resolution for each field (e.g., color, radius, z_range):
-        1. CLI per-subcluster override: e.g., color_2, radius_3
-        2. CLI global override: e.g., --color tab:green --radius 2.5
-        3. Existing CSV value (if present)
-        4. Code default (palette, 2.0 for radius, etc.)
+# ======================================================================
+# Public API
+# ======================================================================
+
+def build_subclusters(
+    cluster: Cluster,
+    *,
+    bcgs: list[BCG] | None = None,
+    config: dict | None = None,
+    **kwargs,
+) -> list[Subcluster]:
+    """Build Subcluster objects from BCGs and configuration.
 
     Parameters
     ----------
-    subclusters : list or tuple of int or dict
-        Each entry is either a BCG index (1-based, int) or a dict with at least 'bcg_id'.
     cluster : Cluster
-        Cluster object (must have attribute `subcluster_file` for saving).
-    **kwargs :
-        CLI-style overrides (color_2, radius_1, label_3, color, radius, label, z_range, etc).
+        Cluster object (provides paths, ``resolve_z_range()``).
+    bcgs : list[BCG] or None
+        Pre-built BCG objects.  If None, loaded from ``config["bcgs"]``
+        or ``BCGs.csv`` (see ``_load_bcgs``).
+    config : dict or None
+        Full config dict (typically from config.yaml).  If None, loaded
+        from ``cluster.config_path``.
+    **kwargs
+        CLI-style overrides.  Supports both global (``color``,
+        ``radius``) and per-subcluster (``color_2``, ``radius_3``)
+        forms.  Also accepts ``combined`` for group definitions.
 
     Returns
     -------
-    output : list of dict
-        List of subcluster dicts, one per subcluster in input.
+    list[Subcluster]
+        One Subcluster per entry in ``config["subclusters"]``, with
+        BCG roles assigned but no member galaxies yet.
+
     Raises
     ------
     ValueError
-        If cluster is not provided, or required fields (e.g. z_range) are missing.
-    Side Effects
-    ------------
-    Updates (or creates) the subcluster CSV at `cluster.subcluster_file` with the union of all seen BCGs.
+        If no subclusters are defined in config, or a referenced BCG
+        ID cannot be found.
     """
-    if cluster is None:
-        raise ValueError("Must supply a Cluster object.")
+    # -- Load config if not provided --------------------------------
+    if config is None:
+        config = load_config(cluster.cluster_path)
+
+    # -- Load BCGs --------------------------------------------------
+    bcg_lookup = _load_bcgs(cluster, bcgs=bcgs, config=config)
+
+    # -- Build individual subclusters -------------------------------
+    sc_configs = config.get("subclusters", {})
+    if not sc_configs:
+        raise ValueError(
+            "No subclusters defined.  Add a 'subclusters' section to "
+            "config.yaml or pass subcluster definitions in the config dict."
+        )
+
+    subclusters: list[Subcluster] = []
+    for idx, (sc_id, sc_cfg) in enumerate(sc_configs.items()):
+        sc = _build_one(
+            idx=idx,
+            sc_id=int(sc_id),
+            sc_cfg=sc_cfg,
+            bcg_lookup=bcg_lookup,
+            cluster=cluster,
+            **kwargs,
+        )
+        subclusters.append(sc)
+        log.info(
+            "Subcluster %d  BCG=%d  label='%s'  color='%s'  "
+            "radius=%.2f Mpc  z_range=%s",
+            idx + 1, sc.bcg_id, sc.label, sc.color,
+            sc.radius_mpc, sc.z_range,
+        )
+
+    # -- Apply group assignments ------------------------------------
+    group_configs = config.get("groups", {})
+    combined_kwarg = kwargs.pop("combined", None)
+    _apply_groups(subclusters, group_configs, bcg_lookup, combined_kwarg, **kwargs)
+
+    return subclusters
 
 
-    ########################
-    # Helper Methods
-    ########################
+# ======================================================================
+# BCG Loading
+# ======================================================================
 
-    # -- Subcluster helpers --
-    def _get_z_range(i, bcg_id, base):
-        zr = _merged_field("z_range", i, bcg_id, base)
-        if zr is not None:
-            return zr
-        # Cluster default (tuple of min/max)
-        if cluster is not None:
-            return cluster.resolve_z_range()
-        raise ValueError(f"Must specify z_range for subcluster {bcg_id} (index {i+1}).")
+def _load_bcgs(
+    cluster: Cluster,
+    *,
+    bcgs: list[BCG] | None = None,
+    config: dict,
+) -> dict[int, BCG]:
+    """Return a ``{bcg_id: BCG}`` lookup from the first available source.
 
-    def _kw_override(key, i, bcg_id, default=None):
-        v = kwargs.get(f"{key}_{bcg_id}", None)
-        if v is not None:
-            return v
-        v_all = kwargs.get(key, None)
-        if v_all is not None:
-            # Special handling for z_range/group_z_range (tuple of two floats)
-            if key in {"z_range", "group_z_range"}:
-                if isinstance(v_all, (list, tuple)) and len(v_all) == 2 and all(
-                    isinstance(x, (int, float, np.floating, np.integer)) for x in v_all
-                ):
-                    return (float(v_all[0]), float(v_all[1]))
-            # If list/tuple, select by subcluster index
-            if isinstance(v_all, (list, tuple)):
-                if len(v_all) > i:
-                    return v_all[i]
-                else:
-                    return default
-            # If scalar (float/int/str), use for all
-            return v_all
-        # Default for field (CSV checked in merged_field)
-        return default
+    Resolution order:
 
-    def _merged_field(field, i, bcg_id, base, default=None):
-        cli_val = _kw_override(field, i, bcg_id, None)
-        if cli_val is not None:
-            return cli_val
-        csv_val = base.get(field, None)
-        if csv_val is not None and csv_val != "":
-            return csv_val
-        return default
+    1. ``bcgs`` argument (pre-built objects).
+    2. ``config["bcgs"]`` section (YAML definitions).
+    3. ``BCGs.csv`` on disk.
 
+    Parameters
+    ----------
+    cluster : Cluster
+        Used for ``cluster.bcg_file`` path when falling back to CSV.
+    bcgs : list[BCG] or None
+        Pre-built BCG objects.
+    config : dict
+        Full config dict, checked for a ``bcgs`` key.
 
-    # -- Combined group helpers --
-    def _parse_combine_arg(combine):
-        """
-        Accepts: None; ['1+4','2+5+3']; [(1,4),(4,1)]; [(2,5,3)]
-        Returns: list of lists with preserved order, e.g. [[1,4],[2,5,3]]
-        """
-        if not combine:
-            return []
-        groups = []
-        for item in combine:
-            if isinstance(item, (tuple, list)):
-                groups.append([int(x) for x in item])
-            else:
-                parts = [int(p.strip()) for p in str(item).split("+") if p.strip()]
-                groups.append(parts)
-        return groups
+    Returns
+    -------
+    dict[int, BCG]
+        Mapping from ``bcg_id`` to ``BCG`` object.
 
-    def _gid_from_members(members):
-        """Canonical group id string using SORTED members (stable key for kwargs/CSV)."""
-        return "_".join(str(x) for x in sorted(members))
+    Raises
+    ------
+    ValueError
+        If no BCGs can be found from any source.
+    """
+    # Source 1: directly provided
+    if bcgs is not None:
+        log.debug("Using %d BCG(s) passed directly.", len(bcgs))
+        return {b.bcg_id: b for b in bcgs}
+
+    # Source 2: config.yaml bcgs section
+    bcg_section = config.get("bcgs", {})
+    if bcg_section:
+        log.debug("Loading BCGs from config.yaml 'bcgs' section.")
+        lookup = {}
+        for bid, bcfg in bcg_section.items():
+            lookup[int(bid)] = BCG.from_config(int(bid), bcfg)
+        return lookup
+
+    # Source 3: BCGs.csv
+    log.debug("Loading BCGs from %s", cluster.bcg_file)
+    bcg_df = read_bcg_csv(cluster)
+    if bcg_df.empty:
+        raise ValueError(
+            f"No BCGs found.  Checked: bcgs argument, config['bcgs'], "
+            f"and {cluster.bcg_file}."
+        )
+    lookup = {}
+    for _, row in bcg_df.iterrows():
+        b = BCG.from_dataframe_row(row)
+        lookup[b.bcg_id] = b
+    return lookup
 
 
-    # -- Load and save --
-    def _load_subcluster_csv(csv_path):
-        if not os.path.exists(csv_path):
-            return {}
-        df = pd.read_csv(csv_path)
-        configs = {}
-        for _, row in df.iterrows():
-            bcg_id = int(row["bcg_id"])
-            cfg = {
-                "bcg_id": bcg_id,
-                "bcg_label": row.get("bcg_label", ""),
-                "color": row.get("color", ""),
-                "radius": float(row["radius"]) if "radius" in row and pd.notna(row["radius"]) else None,
-                "z_range": (
-                    float(row["z_range_min"]), float(row["z_range_max"])
-                ) if "z_range_min" in row and "z_range_max" in row and pd.notna(row["z_range_min"]) and pd.notna(row["z_range_max"]) else None,
-            }
+# ======================================================================
+# Single Subcluster Builder
+# ======================================================================
 
-            configs[bcg_id] = cfg
-        return configs
+def _build_one(
+    idx: int,
+    sc_id: int,
+    sc_cfg: dict[str, Any],
+    bcg_lookup: dict[int, BCG],
+    cluster: Cluster,
+    **kwargs,
+) -> Subcluster:
+    """Create a single Subcluster from its config entry.
 
-    def _save_subcluster_csv(configs, csv_path):
-        rows = []
-        for bcg_id, cfg in sorted(configs.items()):
-            z_range = cfg.get("z_range", (None, None))
-            row = {
-                "bcg_id": bcg_id,
-                "bcg_label": cfg.get("bcg_label", ""),
-                "color": cfg.get("color", ""),
-                "radius": cfg.get("radius", ""),
-                "z_range_min": z_range[0] if z_range else "",
-                "z_range_max": z_range[1] if z_range else "",
-            }
-            # optional group metadata
-            if "group_id" in cfg:
-                row["group_id"] = cfg["group_id"]
-            if "is_dominant" in cfg:
-                row["is_dominant"] = int(cfg["is_dominant"])
-            if "group_members" in cfg:
-                gm = cfg.get("group_members", ())
-                if isinstance(gm, (list, tuple)) and len(gm) > 0:
-                    row["group_members"] = repr(tuple(int(x) for x in gm))
-                else:
-                    row["group_members"] = ""
+    Parameters
+    ----------
+    idx : int
+        Zero-based position in the subcluster list (used for
+        index-based kwarg lookups like ``color`` being a list).
+    sc_id : int
+        Subcluster / BCG identifier.
+    sc_cfg : dict
+        Config dict for this subcluster (from ``config["subclusters"][id]``).
+    bcg_lookup : dict[int, BCG]
+        All available BCGs keyed by ``bcg_id``.
+    cluster : Cluster
+        For ``resolve_z_range()`` fallback.
+    **kwargs
+        CLI overrides.
 
-            if "group_label" in cfg:
-                row["group_label"] = cfg["group_label"]
-            if "group_color" in cfg:
-                row["group_color"] = cfg["group_color"]
-            gz = cfg.get("group_z_range")
-            if gz:
-                row["group_z_range_min"] = gz[0]
-                row["group_z_range_max"] = gz[1]
-            rows.append(row)
-        pd.DataFrame(rows).to_csv(csv_path, index=False)
+    Returns
+    -------
+    Subcluster
+    """
+    bcg_id = int(sc_cfg.get("bcg_id", sc_id))
+    if bcg_id not in bcg_lookup:
+        raise ValueError(
+            f"Subcluster {sc_id} references bcg_id={bcg_id}, but that "
+            f"BCG was not found.  Available: {sorted(bcg_lookup.keys())}"
+        )
+    primary_bcg = bcg_lookup[bcg_id]
+
+    # -- Resolve per-field with the priority chain -------------------
+    color_default = DEFAULT_COLORS[(bcg_id - 1) % len(DEFAULT_COLORS)]
+    label_default = DEFAULT_LABELS[(bcg_id - 1) % len(DEFAULT_LABELS)]
+
+    label = _resolve_field("label", idx, bcg_id, sc_cfg, kwargs, default=label_default)
+    color = _resolve_field("color", idx, bcg_id, sc_cfg, kwargs, default=color_default)
+    radius_mpc = _resolve_field(
+        "radius_mpc", idx, bcg_id, sc_cfg, kwargs, default=DEFAULT_RADIUS_MPC,
+    )
+    # Also accept "radius" as a kwarg alias for "radius_mpc"
+    if radius_mpc == DEFAULT_RADIUS_MPC:
+        radius_alt = _resolve_field(
+            "radius", idx, bcg_id, sc_cfg, kwargs, default=None,
+        )
+        if radius_alt is not None:
+            radius_mpc = radius_alt
+    radius_mpc = float(radius_mpc)
+
+    z_range = _resolve_z_range(idx, bcg_id, sc_cfg, kwargs, cluster)
+
+    return Subcluster(
+        bcg_id=bcg_id,
+        primary_bcg=primary_bcg,
+        label=str(label),
+        color=str(color),
+        radius_mpc=radius_mpc,
+        z_range=z_range,
+    )
 
 
-    ########################
-    # Build Subclusters
-    ########################
+def _resolve_z_range(
+    idx: int,
+    bcg_id: int,
+    sc_cfg: dict,
+    kwargs: dict,
+    cluster: Cluster,
+) -> tuple[float, float]:
+    """Resolve the redshift range for a subcluster.
 
-    csv_path = cluster.subcluster_file
+    Tries (in order): per-subcluster kwarg, global kwarg, config value,
+    then falls back to ``cluster.resolve_z_range()``.
 
-    # Load existing configs
-    configs = _load_subcluster_csv(csv_path)
-    _, _, bcg_df = load_dataframes(cluster)
+    Parameters
+    ----------
+    idx : int
+        Zero-based position index.
+    bcg_id : int
+        BCG identifier.
+    sc_cfg : dict
+        Subcluster config dict.
+    kwargs : dict
+        CLI overrides.
+    cluster : Cluster
+        Fallback source via ``resolve_z_range()``.
 
-    # Defaults
-    default_colors = DEFAULT_COLORS
-    default_labels = DEFAULT_LABELS
-    default_radius = DEFAULT_RADIUS_MPC
+    Returns
+    -------
+    tuple[float, float]
+        (z_min, z_max).
+    """
+    zr = _resolve_field("z_range", idx, bcg_id, sc_cfg, kwargs, default=None)
+    if zr is not None:
+        if isinstance(zr, list):
+            zr = tuple(zr)
+        return (float(zr[0]), float(zr[1]))
+    return cluster.resolve_z_range()
 
 
-    output = []
-    for j, sub in enumerate(subclusters):
-        if isinstance(sub, dict):
-            bcg_id = int(sub.get("bcg_id"))
-        elif isinstance(sub, (int, np.integer)):
-            bcg_id = int(sub)
+# ======================================================================
+# Group Handling
+# ======================================================================
+
+def _apply_groups(
+    subclusters: list[Subcluster],
+    group_configs: dict,
+    bcg_lookup: dict[int, BCG],
+    combined_kwarg: Any,
+    **kwargs,
+) -> None:
+    """Apply group assignments to subclusters (in place).
+
+    Handles both config.yaml group definitions and the legacy
+    ``combined`` kwarg.
+
+    For each group:
+    - The first listed member is the dominant subcluster (defines
+      the group's identity: label, color, stats).
+    - All members get matching ``group_id``, ``group_members``,
+      ``group_label``, ``group_color``.
+    - The member closest to the boundary (if specified) gets set
+      as ``border_bcg``.
+
+    Parameters
+    ----------
+    subclusters : list[Subcluster]
+        Modified in place.
+    group_configs : dict
+        From ``config["groups"]``, keyed by group ID.
+    bcg_lookup : dict[int, BCG]
+        All BCGs.
+    combined_kwarg : list or None
+        Legacy ``combined`` kwarg (e.g., ``["1+4", "2+5"]``).
+    **kwargs
+        Per-group overrides (``group_label_1_4``, etc.).
+    """
+    by_id = {sc.bcg_id: sc for sc in subclusters}
+
+    # -- Solo defaults: every subcluster is its own group -----------
+    for sc in subclusters:
+        sc.group_id = str(sc.bcg_id)
+        sc.group_members = (sc.bcg_id,)
+        sc.is_dominant = True
+        sc.group_label = None
+        sc.group_color = None
+
+    # -- Config-defined groups --------------------------------------
+    for gid, gcfg in group_configs.items():
+        members = [int(m) for m in gcfg.get("members", [])]
+        _assign_group(str(gid), members, gcfg, by_id, bcg_lookup, **kwargs)
+
+    # -- Legacy combined kwarg (e.g., ["1+4", "2+5"]) ---------------
+    combined_groups = _parse_combined_groups(combined_kwarg)
+    for members in combined_groups:
+        gid = _group_id_from_members(members)
+        _assign_group(gid, members, {}, by_id, bcg_lookup, **kwargs)
+
+
+def _assign_group(
+    gid: str,
+    members: list[int],
+    gcfg: dict,
+    by_id: dict[int, Subcluster],
+    bcg_lookup: dict[int, BCG],
+    **kwargs,
+) -> None:
+    """Assign group properties to a set of subclusters.
+
+    Parameters
+    ----------
+    gid : str
+        Group identifier string.
+    members : list[int]
+        BCG IDs in the group. First is dominant.
+    gcfg : dict
+        Group config dict (from config.yaml or empty).
+    by_id : dict[int, Subcluster]
+        Lookup of subclusters by bcg_id.
+    bcg_lookup : dict[int, BCG]
+        All BCGs.
+    **kwargs
+        CLI overrides for group-level fields.
+    """
+    # Filter to members that actually exist as subclusters
+    present = [m for m in members if m in by_id]
+    if len(present) < 2:
+        return
+
+    dominant_id = present[0]
+    dominant_sc = by_id[dominant_id]
+    member_tuple = tuple(present)
+
+    # Resolve group display properties
+    # Per-group kwarg key uses the canonical (sorted) group id
+    canonical_gid = _group_id_from_members(present)
+
+    group_label = (
+        kwargs.get(f"group_label_{canonical_gid}")
+        or kwargs.get("group_label")
+        or gcfg.get("label")
+        or dominant_sc.label
+    )
+    group_color = (
+        kwargs.get(f"group_color_{canonical_gid}")
+        or kwargs.get("group_color")
+        or gcfg.get("color")
+        or dominant_sc.color
+    )
+
+    # Border BCG: the member closest to the inter-group boundary.
+    # Can be specified in config; otherwise left as None (primary is used).
+    border_id = gcfg.get("border_bcg_id")
+
+    for mid in present:
+        sc = by_id[mid]
+        sc.group_id = canonical_gid
+        sc.group_members = member_tuple
+        sc.is_dominant = (mid == dominant_id)
+        sc.group_label = group_label
+        sc.group_color = group_color
+
+        # Add all group BCGs as member_bcgs
+        sc.member_bcgs = [bcg_lookup[m] for m in present if m in bcg_lookup]
+
+        # Set border BCG if specified and this is the dominant subcluster
+        if border_id is not None and mid == dominant_id and border_id in bcg_lookup:
+            sc.border_bcg = bcg_lookup[border_id]
+
+    log.info(
+        "Group %s  members=%s  dominant=%d  label='%s'  color='%s'",
+        canonical_gid, present, dominant_id, group_label, group_color,
+    )
+
+
+# ======================================================================
+# Helper: Field Resolution
+# ======================================================================
+
+def _resolve_field(
+    field: str,
+    idx: int,
+    bcg_id: int,
+    sc_cfg: dict,
+    kwargs: dict,
+    *,
+    default: Any = None,
+) -> Any:
+    """Resolve a single field through the priority chain.
+
+    Priority (highest to lowest):
+
+    1. Per-subcluster kwarg: ``kwargs["{field}_{bcg_id}"]``
+    2. Global kwarg (scalar or indexed): ``kwargs["{field}"]``
+    3. Config value: ``sc_cfg["{field}"]``
+    4. Default
+
+    Parameters
+    ----------
+    field : str
+        Field name (e.g., ``"color"``, ``"radius_mpc"``).
+    idx : int
+        Zero-based position index (for list-valued global kwargs).
+    bcg_id : int
+        BCG identifier (for per-subcluster kwargs).
+    sc_cfg : dict
+        Config dict for this subcluster.
+    kwargs : dict
+        CLI overrides.
+    default : Any
+        Fallback value if nothing else matches.
+
+    Returns
+    -------
+    Any
+        The resolved value.
+    """
+    # 1. Per-subcluster kwarg (e.g., color_2)
+    per_sc = kwargs.get(f"{field}_{bcg_id}")
+    if per_sc is not None:
+        return per_sc
+
+    # 2. Global kwarg (e.g., color="tab:green" or color=["white", "tab:green"])
+    global_val = kwargs.get(field)
+    if global_val is not None:
+        # z_range is a tuple/list of two floats — don't index into it
+        if field in ("z_range", "group_z_range"):
+            if (
+                isinstance(global_val, (list, tuple))
+                and len(global_val) == 2
+                and all(isinstance(x, (int, float)) for x in global_val)
+            ):
+                return tuple(float(x) for x in global_val)
+        # List-valued global: pick by index position
+        if isinstance(global_val, (list, tuple)):
+            if idx < len(global_val):
+                return global_val[idx]
+            return default
+        # Scalar: applies to all subclusters
+        return global_val
+
+    # 3. Config value
+    cfg_val = sc_cfg.get(field)
+    if cfg_val is not None:
+        return cfg_val
+
+    # 4. Default
+    return default
+
+
+# ======================================================================
+# Helper: Combined Group Parsing
+# ======================================================================
+
+def _parse_combined_groups(combine: Any) -> list[list[int]]:
+    """Parse the ``combined`` kwarg into lists of member BCG IDs.
+
+    Accepts several formats:
+
+    - ``None`` -> ``[]``
+    - ``["1+4", "2+5+3"]`` -> ``[[1, 4], [2, 5, 3]]``
+    - ``[(1, 4), (2, 5, 3)]`` -> ``[[1, 4], [2, 5, 3]]``
+
+    Parameters
+    ----------
+    combine : None, list of str, or list of tuple/list
+        Group definitions from CLI.
+
+    Returns
+    -------
+    list[list[int]]
+        Each inner list is a group with member BCG IDs.
+        Order is preserved (first element = dominant).
+    """
+    if not combine:
+        return []
+    groups = []
+    for item in combine:
+        if isinstance(item, (tuple, list)):
+            groups.append([int(x) for x in item])
         else:
-            raise ValueError("Each subcluster must be an int or dict (with 'bcg_id').")
-
-        color_idx = (bcg_id - 1) % len(default_colors)
-        label_idx = bcg_id - 1
-        base = configs.get(bcg_id, {})
-
-        # Merge: priority is kwargs/subcluster > csv > default
-        out = dict(base)
-        out["bcg_id"]    = bcg_id
-        out["bcg_label"] = _merged_field("bcg_label", j, bcg_id, base, default_labels[label_idx])
-        out["color"]     = _merged_field("color", j, bcg_id, base, default_colors[color_idx])
-        out["radius"]    = _merged_field("radius", j, bcg_id, base, default_radius)
-        out["z_range"]   = _get_z_range(j, bcg_id, base)
-        out['center'] = load_bcg_location(bcg_df, bcg_id=bcg_id)
-        z_bcg = np.nan
-        if 'z' in bcg_df.columns:
-            row = bcg_df[bcg_df['BCG_priority'] == bcg_id]
-            if not row.empty:
-                z_val = row['z'].iloc[0]
-                if not pd.isna(z_val):
-                    z_bcg = z_val
-        out['z_bcg'] = z_bcg
-
-        output.append(out)
-        configs[bcg_id] = out  # Update/insert for CSV
-
-        print(f"############ Subcluster {len(output)} ##############")
-        print(f"  BCG ID:      {out['bcg_id']}")
-        print(f"   Label:      {out['bcg_label']}")
-        print(f"  Center:      {out['center'].to_string('decimal')}")
-        print(f"   z_bcg:      {out['z_bcg']}")
-        print(f"   Color:      {out['color']}")
-        print(f"  Radius:      {out['radius']} Mpc")
-        print()
+            parts = [int(p.strip()) for p in str(item).split("+") if p.strip()]
+            groups.append(parts)
+    return groups
 
 
-    ########################
-    # Build Combined Groups
-    ########################
+def _group_id_from_members(members: list[int]) -> str:
+    """Build a canonical group ID from sorted member BCG IDs.
 
-    combined = kwargs.pop("combined", None)
-    combined_groups = _parse_combine_arg(combined)
-    # --- Combined groups --
-    by_id = {o["bcg_id"]: o for o in output}
-    for bcg_id, ent in by_id.items():
-        ent["group_id"]       = str(bcg_id)   # solo by default
-        ent["is_dominant"]    = 1
-        ent["group_members"]  = (bcg_id,)            # tuple; empty means no combine
-        ent["group_label"]    = ent.get("bcg_label", str(bcg_id))   # reuse BCG label
-        ent["group_color"]    = ent.get("color", "")                # reuse BCG color
-        ent["group_z_range"]  = ent.get("z_range", None)            # reuse BCG z-range
+    Parameters
+    ----------
+    members : list[int]
+        BCG IDs in the group.
 
-    if combined_groups:
-        by_id = {o["bcg_id"]: o for o in output}
-        present = set(by_id.keys())
-
-        # Global optional overrides
-        global_glabel = kwargs.get("group_label", None)
-        global_gcolor = kwargs.get("group_color", None)
-        global_gz     = kwargs.get("group_z_range", None)  # tuple (zmin, zmax)
-
-        for raw_members in combined_groups:
-            members = [m for m in raw_members if m in present]
-            if len(members) < 2:
-                continue
-            dominant = members[0]                  # ORDER MATTERS: dominant is first
-            gid = _gid_from_members(members)       # canonical key (sorted)
-
-            # Per-group overrides via kwargs: group_label_1_4, group_color_1_4, group_z_range_1_4
-            per_label = kwargs.get(f"group_label_{gid}", None)
-            per_color = kwargs.get(f"group_color_{gid}", None)
-            per_gz    = kwargs.get(f"group_z_range_{gid}", None)
-
-            # Defaults from dominant entry
-            dom = by_id[dominant]
-            dom_label = dom.get("bcg_label", gid)
-            dom_color = dom.get("color", "")
-            dom_zrng  = dom.get("z_range", None)
-
-            group_label   = per_label if per_label is not None else (global_glabel if global_glabel is not None else dom_label)
-            group_color   = per_color if per_color is not None else (global_gcolor if global_gcolor is not None else dom_color)
-            group_z_range = per_gz    if per_gz    is not None else (global_gz    if global_gz    is not None else dom_zrng)
-
-            tuple_members = tuple(members)
-            for m in members:
-                ent = by_id[m]
-                ent["group_id"]      = gid
-                ent["group_members"] = tuple_members
-                ent["is_dominant"]   = int(m == dominant)
-                ent["group_label"]   = group_label
-                ent["group_color"]   = group_color
-                ent["group_z_range"] = group_z_range
-
-            print(f"############ Group {ent['group_id']} ##############")
-            print(f" Members:    {', '.join(str(x) for x in members)}")
-            print(f"   Label:      {ent['group_label']}")
-            print(f"   Color:      {ent['group_color']}")
-            print()
-
-
-        # Fill in any missing group fields for singles
-        for bcg_id, ent in by_id.items():
-            ent.setdefault("group_id", str(bcg_id))
-            ent.setdefault("is_dominant", 1)
-            ent.setdefault("group_members", "")
-            ent.setdefault("group_label", ent.get("group_label", ""))
-            ent.setdefault("group_color", ent.get("group_color", ""))
-
-        # Update configs for saving
-        for bcg_id, ent in by_id.items():
-            configs[bcg_id] = ent
-
-
-    # Save union of all BCGs
-    _save_subcluster_csv(configs, csv_path)
-
-
-    return output
-
-def load_bcg_location(bcg_df, bcg_id=None, verbose=False):
-
-    if verbose:
-        print(f"BCGs {bcg_df}\n")
-    if bcg_id is not None:
-        bcg_row = bcg_df.loc[bcg_df['BCG_priority'] == bcg_id]
-        if bcg_row.empty:
-            raise ValueError(f"BCG {bcg_id} not found.")
-        ra = bcg_row['RA'].values[0]
-        dec = bcg_row['Dec'].values[0]
-
-    return SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+    Returns
+    -------
+    str
+        e.g., ``"1_4"`` for members ``[4, 1]``.
+    """
+    return "_".join(str(x) for x in sorted(members))
