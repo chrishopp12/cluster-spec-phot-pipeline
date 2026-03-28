@@ -171,6 +171,64 @@ def run_xray(
             zm = stats.get("z_mean", 0)
             print(f"    Subcluster {label}: N_spec={n}, z_mean={zm:.4f}, sigma_v={sv:.1f} km/s")
 
+        # Stage 9: Subcluster plots
+        print("\n  --- Subcluster plots ---")
+        save_path = cluster.image_path
+        os.makedirs(save_path, exist_ok=True)
+
+        try:
+            plot_subcluster_members_and_regions(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                phot_groups=phot_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Members + regions plot: OK")
+        except Exception as e:
+            print(f"    Members + regions plot FAILED: {e}")
+
+        try:
+            plot_2panel_optical_contours(
+                cluster=cluster,
+                subclusters=subclusters,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    2-panel optical contours: OK")
+        except Exception as e:
+            print(f"    2-panel optical contours FAILED: {e}")
+
+        try:
+            plot_redshift_and_subclusters_figure(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                phot_groups=phot_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Redshift + subclusters figure: OK")
+        except Exception as e:
+            print(f"    Redshift + subclusters figure FAILED: {e}")
+
+        try:
+            plot_stacked_redshift_histograms(
+                cluster=cluster,
+                subclusters=subclusters,
+                spec_groups=spec_groups,
+                save_plots=save_plots,
+                show_plots=show_plots,
+                save_path=save_path,
+            )
+            print("    Stacked histograms: OK")
+        except Exception as e:
+            print(f"    Stacked histograms FAILED: {e}")
+
     elif subclusters is not None and len(subclusters) < 2:
         print(f"\n  Only {len(subclusters)} subcluster — need at least 2 for bisector analysis")
 

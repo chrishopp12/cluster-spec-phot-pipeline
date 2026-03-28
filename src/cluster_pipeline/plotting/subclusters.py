@@ -440,7 +440,19 @@ def plot_stacked_redshift_histograms(
 
     # Prepare data per subcluster
     colors = [sub.color for sub in subclusters]
-    z_data, vel_data = analyze_group(spec_groups)
+    group_stats = analyze_group(subclusters)
+
+    # Convert to the list format used by plotting code
+    z_data = []
+    vel_data = []
+    for sub in subclusters:
+        stats = group_stats.get(sub.label, {})
+        z_vals = stats.get("z_vals", np.array([]))
+        z_data.append(z_vals)
+        vels = stats.get("velocities", np.array([]))
+        z_mean = stats.get("z_mean", 0.0)
+        sigma_v = stats.get("sigma_v", 0.0)
+        vel_data.append((vels, z_mean, sigma_v))
 
     # Filter redshifts
     z_low = 0.0
@@ -1254,7 +1266,19 @@ def plot_subcluster_regions_and_histograms(
 
 
 
-    z_data, vel_data = analyze_group(z_group)
+    # analyze_group expects list[Subcluster]; adapt if passed DataFrames
+    active_subs = combined_configs if combined_configs is not None else subclusters
+    group_stats_local = analyze_group(active_subs)
+    z_data = []
+    vel_data = []
+    for sub in active_subs:
+        stats = group_stats_local.get(sub.label, {})
+        z_vals = stats.get("z_vals", np.array([]))
+        z_data.append(z_vals)
+        vels = stats.get("velocities", np.array([]))
+        z_mean = stats.get("z_mean", 0.0)
+        sigma_v = stats.get("sigma_v", 0.0)
+        vel_data.append((vels, z_mean, sigma_v))
 
 
     # outputs['tex_path'] and outputs['pairs_csv'] have the written files
