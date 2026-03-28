@@ -125,6 +125,20 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             phot_dfs=phot_dfs,
         )
 
+        # Supplement BCGs with manual entries from config.yaml
+        if "bcgs" in cfg:
+            from cluster_pipeline.models.bcg import BCG
+            existing_ids = {b.bcg_id for b in bcgs}
+            for bid, bcfg in cfg["bcgs"].items():
+                bid = int(bid)
+                if bid not in existing_ids:
+                    manual_bcg = BCG.from_config(bid, bcfg)
+                    bcgs.append(manual_bcg)
+                    click.echo(f"  Added manual BCG {bid} ('{manual_bcg.label}') from config.yaml")
+
+            # Rewrite BCGs.csv with the complete list
+            _write_bcgs_csv(cluster, bcgs)
+
     # --- Stage 4: Red Sequence ---
     if "redseq" in stages:
         from cluster_pipeline.catalog.redsequence import run_redsequence
@@ -266,3 +280,40 @@ def list_clusters(base_path):
         z = row.get("redshift", "")
         z_str = f"{float(z):.4f}" if z and str(z).strip() else ""
         click.echo(f"{ident:<25} {name:<35} {z_str:>8}")
+
+
+# ====================================================================
+# Helpers
+# ====================================================================
+
+def _write_bcgs_csv(cluster, bcgs: list) -> None:
+    """Write the complete BCG list to BCGs.csv.
+
+    Includes both redMaPPer and manual BCGs. This is a data product
+    with all available photometry and spectroscopy for each BCG.
+    """
+    import pandas as pd
+
+    rows = []
+    for bcg in sorted(bcgs, key=lambda b: b.bcg_id):
+        row = {
+            "BCG_priority": bcg.bcg_id,
+            "RA": bcg.ra,
+            "Dec": bcg.dec,
+            "BCG_probability": bcg.probability,
+            "z": bcg.z,
+            "sigma_z": bcg.sigma_z,
+            "label": bcg.label,
+        }
+        # Include photometry if available (from spec+phot matching)
+        for attr in ("gmag", "rmag", "imag", "phot_source",
+                     "lum_weight_g", "lum_weight_r", "lum_weight_i",
+                     "g_r", "r_i", "g_i"):
+            row[attr] = getattr(bcg, attr, None)
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    path = cluster.bcg_file
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    df.to_csv(path, index=False)
+    print(f"Wrote BCGs.csv ({len(df)} BCGs) -> {path}")
