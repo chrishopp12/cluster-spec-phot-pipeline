@@ -1,4 +1,19 @@
-"""Unified CLI for cluster-pipeline."""
+#!/usr/bin/env python3
+"""
+cli.py
+
+Unified CLI for Cluster Pipeline
+---------------------------------------------------------
+
+Entry point for all pipeline operations. Installed as ``cluster-pipeline``
+via pyproject.toml.
+
+Commands:
+  run   — Run pipeline stages for a cluster
+  init  — Initialize a new cluster directory and config
+  info  — Display cluster summary
+  list  — List all known clusters from clusters.csv
+"""
 
 from __future__ import annotations
 
@@ -16,25 +31,20 @@ def main():
     pass
 
 
-# ------------------------------------
+# ====================================================================
 # run
-# ------------------------------------
+# ====================================================================
 
 @main.command()
 @click.argument("cluster_id")
 @click.option("--base-path", type=click.Path(exists=True, file_okay=False),
-              default=None, help="Base directory for cluster data (default: ~/XSorter/Clusters/).")
-@click.option("--stages", multiple=True, type=click.Choice(["spec", "phot", "xray"], case_sensitive=False),
-              help="Pipeline stages to run. Omit to run all.")
+              default=None, help="Base directory for cluster data.")
+@click.option("--stages", multiple=True,
+              type=click.Choice(["spec", "phot", "matching", "redseq", "xray"], case_sensitive=False),
+              help="Pipeline stages to run. Default: spec + phot + matching + redseq.")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
 @click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures.")
 @click.option("--show-plots/--no-show-plots", default=False, help="Display figures interactively.")
-# Spec/phot options
-@click.option("--skip-redshifts", is_flag=True, help="Skip archival redshift queries.")
-@click.option("--skip-photometry", is_flag=True, help="Skip archival photometry queries.")
-@click.option("--skip-catalogs", is_flag=True, help="Skip catalog building.")
-@click.option("--skip-cmd", is_flag=True, help="Skip color-magnitude fitting.")
-@click.option("--skip-plots", is_flag=True, help="Skip plot generation.")
 # Cluster overrides
 @click.option("--ra", type=float, default=None, help="Override RA (degrees).")
 @click.option("--dec", type=float, default=None, help="Override Dec (degrees).")
@@ -43,25 +53,21 @@ def main():
 @click.option("--z-max", type=float, default=None, help="Maximum redshift for analysis.")
 @click.option("--fov", type=float, default=None, help="Field of view (arcmin).")
 @click.option("--psf", type=float, default=None, help="PSF smoothing (arcsec).")
-@click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None, help="Photometry survey.")
-# Xray options
-@click.option("--subclusters", multiple=True, type=int, help="BCG indices for subclusters (e.g., --subclusters 2 6 7).")
+@click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None)
+# Xray / subcluster options
+@click.option("--subclusters", multiple=True, type=int,
+              help="BCG indices for subclusters (e.g., --subclusters 2 --subclusters 6).")
 @click.option("--radius", type=float, default=None, help="Subcluster search radius (Mpc).")
 def run(cluster_id, base_path, stages, save, save_plots, show_plots,
-        skip_redshifts, skip_photometry, skip_catalogs, skip_cmd, skip_plots,
         ra, dec, redshift, z_min, z_max, fov, psf, survey,
         subclusters, radius):
     """Run pipeline stages for a cluster."""
-    from cluster_pipeline.models.cluster import Cluster
+    from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import load_config, save_config, merge_config
 
     setup_plot_style()
 
-    # Determine which stages to run
-    if not stages:
-        stages = ("spec", "phot")  # Default to spec+phot if nothing specified
-
-    # Build CLI overrides dict (only non-None values)
+    # --- Build CLI overrides ---
     cli_overrides = {}
     for key, val in [("ra", ra), ("dec", dec), ("redshift", redshift),
                      ("z_min", z_min), ("z_max", z_max), ("fov", fov),
@@ -69,17 +75,20 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         if val is not None:
             cli_overrides[key] = val
 
-    # Create and populate the Cluster
-    cluster = Cluster(cluster_id, base_path=base_path, **cli_overrides)
-    cluster.populate(verbose=True)
+    # --- Initialize cluster ---
+    cluster = cluster_init(cluster_id, base_path=base_path, verbose=True, **cli_overrides)
 
-    # Load and merge config
+    # --- Load and merge config ---
     cfg = load_config(cluster.cluster_path)
     if cli_overrides:
         cfg = merge_config(cfg, cli_overrides)
 
-    # Resolve z_range
+    # --- Resolve z_range ---
     z_lo, z_hi = cluster.resolve_z_range(z_min=z_min, z_max=z_max)
+
+    # --- Determine stages ---
+    if not stages:
+        stages = ("spec", "phot", "matching", "redseq")
 
     click.echo(f"\n{'='*50}")
     click.echo(f"  Cluster: {cluster.identifier}")
@@ -89,42 +98,52 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     click.echo(f"   Stages: {', '.join(stages)}")
     click.echo(f"{'='*50}\n")
 
-    # Run spec/phot stages
-    if "spec" in stages or "phot" in stages:
-        from cluster_pipeline.pipelines.spec_phot import run_full_pipeline
+    # --- Stage 1: Spectroscopy ---
+    archival_df = None
+    deimos_df = None
+    if "spec" in stages:
+        from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
+        click.echo("--- Stage 1: Spectroscopy ---")
+        archival_df, deimos_df = run_spectroscopy(cluster)
 
-        run_full_pipeline(
+    # --- Stage 2: Photometry ---
+    phot_dfs = None
+    if "phot" in stages:
+        from cluster_pipeline.catalog.photometry import run_photometry
+        click.echo("\n--- Stage 2: Photometry ---")
+        phot_dfs = run_photometry(cluster, surveys=[survey or cluster.survey])
+
+    # --- Stage 3: Matching ---
+    bcgs = None
+    if "matching" in stages:
+        from cluster_pipeline.catalog.matching import run_matching
+        click.echo("\n--- Stage 3: Catalog Matching ---")
+        combined_df, matched_dfs, bcgs = run_matching(
             cluster,
-            z_min=z_lo,
-            z_max=z_hi,
-            show_plots=show_plots,
-            save_plots=save_plots,
-            skip_redshifts=skip_redshifts or ("spec" not in stages),
-            skip_photometry=skip_photometry or ("phot" not in stages),
-            skip_catalogs=skip_catalogs,
-            skip_cmd=skip_cmd,
-            skip_plots=skip_plots,
+            archival_df=archival_df,
+            deimos_df=deimos_df,
+            phot_dfs=phot_dfs,
         )
 
-    # Run xray stage
+    # --- Stage 4: Red Sequence ---
+    if "redseq" in stages:
+        from cluster_pipeline.catalog.redsequence import run_redsequence
+        click.echo("\n--- Stage 4: Red Sequence ---")
+        members_df = run_redsequence(cluster)
+
+    # --- Stage 5-8: X-ray pipeline ---
     if "xray" in stages:
         from cluster_pipeline.subclusters.builder import build_subclusters
-        from cluster_pipeline.pipelines.xray import analyze_cluster
+        from cluster_pipeline.pipelines.xray import run_xray
 
-        subcluster_ids = subclusters if subclusters else cfg.get("subclusters_ids", (1,))
-        subcluster_configs = build_subclusters(
-            subclusters=subcluster_ids,
-            cluster=cluster,
-            radius=radius,
-        )
-        analyze_cluster(
-            cluster,
-            subcluster_configs,
-            show_plots=show_plots,
-            save_plots=save_plots,
-        )
+        click.echo("\n--- Stage 5: Subcluster Building ---")
+        subcluster_list = build_subclusters(cluster, bcgs=bcgs, config=cfg)
 
-    # Persist config if --save
+        click.echo("\n--- Stages 6-8: X-ray Analysis ---")
+        run_xray(cluster, subclusters=subcluster_list,
+                 save_plots=save_plots, show_plots=show_plots)
+
+    # --- Persist config if --save ---
     if save:
         save_config(cluster.cluster_path, cfg)
         click.echo(f"\nConfig saved to {cluster.config_path}")
@@ -132,9 +151,9 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     click.echo("\nDone.")
 
 
-# ------------------------------------
+# ====================================================================
 # init
-# ------------------------------------
+# ====================================================================
 
 @main.command()
 @click.argument("cluster_id")
@@ -145,21 +164,21 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
 @click.option("--redshift", type=float, default=None, help="Cluster redshift.")
 def init(cluster_id, base_path, ra, dec, redshift):
     """Initialize a new cluster directory and config."""
-    from cluster_pipeline.models.cluster import Cluster
+    from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import save_config, get_default_config
 
-    kwargs = {}
+    overrides = {}
     if ra is not None:
-        kwargs["ra"] = ra
+        overrides["ra"] = ra
     if dec is not None:
-        kwargs["dec"] = dec
+        overrides["dec"] = dec
     if redshift is not None:
-        kwargs["redshift"] = redshift
+        overrides["redshift"] = redshift
 
-    cluster = Cluster(cluster_id, base_path=base_path, **kwargs)
-    cluster.populate(verbose=True)
+    cluster = cluster_init(cluster_id, base_path=base_path, verbose=True, **overrides)
+    cluster.ensure_directories()
 
-    # Create config with defaults + discovered values
+    # Build config from defaults + discovered values
     cfg = get_default_config()
     cfg["identifier"] = cluster.identifier
     if cluster.name:
@@ -170,18 +189,20 @@ def init(cluster_id, base_path, ra, dec, redshift):
         cfg["dec"] = cluster.dec
     if cluster.redshift is not None:
         cfg["redshift"] = cluster.redshift
+    if cluster.z_min is not None and cluster.z_max is not None:
+        cfg["z_range"] = [cluster.z_min, cluster.z_max]
 
     save_config(cluster.cluster_path, cfg)
 
     click.echo(f"\nInitialized {cluster.identifier}")
     click.echo(f"  Directory: {cluster.cluster_path}")
-    click.echo(f"  Config: {cluster.config_path}")
+    click.echo(f"     Config: {cluster.config_path}")
     click.echo(cluster)
 
 
-# ------------------------------------
+# ====================================================================
 # info
-# ------------------------------------
+# ====================================================================
 
 @main.command()
 @click.argument("cluster_id")
@@ -189,12 +210,10 @@ def init(cluster_id, base_path, ra, dec, redshift):
               default=None, help="Base directory for cluster data.")
 def info(cluster_id, base_path):
     """Display summary information for a cluster."""
-    from cluster_pipeline.models.cluster import Cluster
+    from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import load_config
 
-    cluster = Cluster(cluster_id, base_path=base_path)
-    cluster.populate(verbose=False)
-
+    cluster = cluster_init(cluster_id, base_path=base_path, verbose=False)
     click.echo(cluster)
 
     cfg = load_config(cluster.cluster_path)
@@ -204,17 +223,21 @@ def info(cluster_id, base_path):
         click.echo("No config.yaml found. Run `cluster-pipeline init` to create one.")
 
 
-# ------------------------------------
+# ====================================================================
 # list
-# ------------------------------------
+# ====================================================================
 
 @main.command(name="list")
-def list_clusters():
+@click.option("--base-path", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Base directory for cluster data.")
+def list_clusters(base_path):
     """List all known clusters from clusters.csv."""
-    from cluster_pipeline.models.cluster import Cluster
+    from cluster_pipeline.models.cluster import DEFAULT_BASE_PATH
     import pandas as pd
 
-    csv_path = os.path.join(Cluster.DEFAULT_BASE_PATH, Cluster.MASTER_FILE_NAME)
+    bp = base_path or str(DEFAULT_BASE_PATH)
+    csv_path = os.path.join(bp, "clusters.csv")
+
     if not os.path.exists(csv_path):
         click.echo(f"No clusters.csv found at {csv_path}")
         return
