@@ -1,85 +1,70 @@
 #!/usr/bin/env python3
 """
-color_magnitude_pipeline.py
+redsequence.py
 
-Red Sequence Fitting and Photometric Selection Pipeline
----------------------------------------------------------
+Stage 4: Red Sequence Fitting and Cluster Member Selection
+----------------------------------------------------------
+Fits the red sequence in color-magnitude space using spectroscopically
+confirmed cluster members, then selects photometric members that fall
+on that sequence.  Builds a deduplicated cluster member catalog
+combining spectroscopic and photometric members.
 
-This script crossmatches photometric and redshift catalogs, fits the cluster red sequence,
-selects photometric red sequence members, and produces color-magnitude and spatial plots.
+Data products:
+  - Members/cluster_members.csv          Deduplicated member catalog
+  - Members/redseq_{survey}_{color}.csv  Per-fit intermediate results
 
-Requirements:
-    - astropy
-    - astroquery
-    - sklearn
-    - numpy
-    - pandas
-    - matplotlib
-    - cluster.py (local)
-    - my_utils.py (local)
-    - color_magnitude_plotting.py (local)
-
-Usage:
-    python color_magnitude_pipeline.py CLUSTER_ID [options]
-
-Example:
-    python color_magnitude_pipeline.py "Abell 2355" --zmin 0.215 --zmax 0.245
-
-Options:
-    --zmin         <float>    Minimum cluster redshift           [default: 0.0]
-    --zmax         <float>    Maximum cluster redshift           [default: 1.5]
-    -p, --path     <str>      Science directory                  [default: cwd]
-    --plot-cmd     <bool>     Create CMD plots                   [default: true]
-    --plot-spatial <bool>     Create RA-DEC member map           [default: true]
-    --save-plots   <bool>     Save plots to file                 [default: true]
+Column conventions (output member catalog):
+  RA, Dec, z, sigma_z, spec_source, gmag, rmag, imag, g_r, r_i, g_i,
+  lum_weight_r, phot_source, member_type
 
 Notes:
-    - "CLUSTER_ID" positional arg can be input as a cluster identifier mapped to a cluster name (eg. '1219' or '0881900301') or the
-    full RMJ/Abell name (possibly others).
+  - The red sequence is fit with iterative sigma-clipped linear
+    regression on the (magnitude, color) plane of spec-z members.
+  - Photometric members are sources whose color lies within
+    ``color_band`` of the fit line, after applying a minimum
+    magnitude cut.
+  - ``member_type`` is "spec" for spectroscopic members (z in the
+    cluster redshift range) or "phot" for red-sequence-only sources.
+  - When a source has both a spec match and a red-sequence detection,
+    the spec version is kept (with all photometric columns attached).
 """
 from __future__ import annotations
 
 import os
-import argparse
 
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-
-from astropy.coordinates import SkyCoord
-import astropy.units as u
-
+import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from cluster_pipeline.models.cluster import Cluster
-from cluster_pipeline.utils import str2bool, get_color_mag_functions, split_members_by_spec
-from cluster_pipeline.io.catalogs import load_dataframes
-from cluster_pipeline.plotting.common import finalize_figure
-from cluster_pipeline.plotting.cmd import plot_cmd, plot_spatial
+from cluster_pipeline.utils import coerce_to_numeric, get_color_mag_functions, split_members_by_spec
+from cluster_pipeline.utils.coordinates import make_skycoord
+from cluster_pipeline.catalog.matching import match_skycoords_unique
 
 
-# ------------------------------------
-# Defaults/ Constants
-# ------------------------------------
-DEFAULT_MAG = 'rmag'
+# ---------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------
+DEFAULT_MAG = "rmag"
 
-RA_COL = 'RA'
-DEC_COL = 'Dec'
-Z_COL = 'z'
-SIGMA_Z_COL = 'sigma_z'
-SPEC_SOURCE_COL = 'spec_source'
-PHOT_SOURCE_COL = 'phot_source'
+RA_COL = "RA"
+DEC_COL = "Dec"
+Z_COL = "z"
+SIGMA_Z_COL = "sigma_z"
+SPEC_SOURCE_COL = "spec_source"
+PHOT_SOURCE_COL = "phot_source"
 
-plt.rcParams['font.family'] = 'serif'
-plt.rcParams['font.size'] = 16
-plt.rcParams['axes.labelsize'] = 16
-plt.rcParams['axes.titlesize'] = 14
-plt.rcParams['xtick.labelsize'] = 14
-plt.rcParams['ytick.labelsize'] = 14
+# Columns retained in the final member catalog
+MEMBER_COLS = [
+    "RA", "Dec", "z", "sigma_z", "spec_source",
+    "gmag", "rmag", "imag", "g_r", "r_i", "g_i",
+    "lum_weight_r", "phot_source", "member_type",
+]
 
-# ------------------------------------
+
+# ---------------------------------------------------------------
 # Helpers
-# ------------------------------------
+# ---------------------------------------------------------------
 
 def _check_required_columns(
         df: pd.DataFrame,
@@ -136,9 +121,9 @@ def _filter_by_redshift(
     return df[(df[Z_COL] >= zmin) & (df[Z_COL] <= zmax)].copy()
 
 
-# ------------------------------------
+# ---------------------------------------------------------------
 # Red Sequence Fitting and Member Selection
-# ------------------------------------
+# ---------------------------------------------------------------
 
 def iterative_linear_fit(
         x: np.ndarray,
@@ -207,7 +192,7 @@ def fit_red_sequence(
     zmin: float,
     zmax: float,
     color_type: str = "g-r",
-) -> tuple[float | None, float | None, pd.DataFrame | None, pd.DataFrame | None]:
+) -> tuple[float, float]:
     """
     Fits a linear red sequence to spectroscopic members and returns the fit parameters.
 
@@ -215,17 +200,18 @@ def fit_red_sequence(
     ----------
     matched_df : pd.DataFrame
         DataFrame with photometry added for all matched spec sources.
+    zmin, zmax : float
+        Redshift bounds for selecting spectroscopic members.
     color_type : str, optional
         Color combination to use: "g-r", "r-i", or "g-i" [default: "g-r"]
-    zmin, zmax: float
-        Redshift bounds; defaults to cluster.z_min/z_max if None.
 
     Returns
     -------
-    a, b : float
-        Slope and intercept of red sequence fit.
+    a : float
+        Slope of the red sequence fit (NaN if fit failed).
+    b : float
+        Intercept of the red sequence fit (NaN if fit failed).
     """
-
     required_cols, color_label, mag_label, color_func, mag_func = get_color_mag_functions(color_type)
 
     # Drop rows missing required mags
@@ -236,14 +222,13 @@ def fit_red_sequence(
         print("No valid spec-z members with required magnitudes.")
         return np.nan, np.nan
 
-
     x = mag_func(fit_data).to_numpy().reshape(-1, 1)
     y = color_func(fit_data).to_numpy()  # y can remain 1D
 
     model, _ = iterative_linear_fit(x, y)
     if model is None:
         print("Red sequence fit failed.")
-        return np.nan, np.nan, pd.DataFrame(), pd.DataFrame()
+        return np.nan, np.nan
     a = float(model.coef_[0])
     b = float(model.intercept_)
     print(f"Fit: {color_label} = {a:.3f} * {mag_label} + {b:.3f}")
@@ -394,19 +379,12 @@ def fit_and_select_red_sequence(
     full_df: pd.DataFrame,
     *,
     color_band: float = 0.2,
-    ylim: tuple[float, float] = (-4.0, 4.0),
-    xlim: tuple[float, float] = (10.0, 27.5),
     color_type: str = "g-r",
     survey: str = "Legacy",
     mag_min: float = 16.0,
     zmin: float | None = None,
     zmax: float | None = None,
-    plot_cmd_flag: bool = True,
-    plot_spatial_flag: bool = True,
-    show_plots: bool = True,
-    save_plots: bool = False,
-    save_path: str | None = None,
-):
+) -> pd.DataFrame | None:
     """
     Fits a linear red sequence to spectroscopic members and selects photometric matches.
 
@@ -417,32 +395,24 @@ def fit_and_select_red_sequence(
     matched_df : pd.DataFrame
         DataFrame with photometry added for all matched spec sources.
     full_df : pd.DataFrame
-        DataFrame of all sources.
+        DataFrame of all photometric sources.
     color_band : float, optional
         Max allowed deviation in color to be selected [default: 0.2 mag]
-    ylim, xlim : tuple of float, optional
-        Y-axis (color), X-axis (magnitude) plot limits [default: (-4.0, 4.0), (10.0, 27.5)]
     color_type : str, optional
         Color combination to use: "g-r", "r-i", or "g-i" [default: "g-r"]
     survey : str, optional
-        Survey name for plot labeling (e.g., "PanSTARRS", "Legacy") [default: "Legacy"]
+        Survey name for labeling (e.g., "PanSTARRS", "Legacy") [default: "Legacy"]
     mag_min : float, optional
         Minimum magnitude to consider [default: 16.0]
-    zmin, zmax: float, optional
+    zmin, zmax : float, optional
         Redshift bounds; defaults to cluster.z_min/z_max if None.
-    plot_cmd_flag, plot_spatial_flag: bool, optional
-        If True, plot CMD and/or sky map. [default: True]
-    show_plots, save_plots : bool, optional
-        Plot controls passed through to ``finalize_figure``.
-    save_path : str or None, optional
-        Directory (or full file path) for plot saving.
 
     Returns
     -------
-    selected_df : pd.DataFrame
-        Photometric members on the red sequence (+spec-z matches).
+    selected_df : pd.DataFrame or None
+        Photometric members on the red sequence (+spec-z matches),
+        or None if fitting/selection failed.
     """
-
     # Use cluster z_min/z_max unless overridden
     zmin = zmin if zmin is not None else cluster.z_min
     zmax = zmax if zmax is not None else cluster.z_max
@@ -452,7 +422,7 @@ def fit_and_select_red_sequence(
     try:
         required_cols, color_label, mag_label, color_func, mag_func = get_color_mag_functions(color_type)
     except ValueError as exc:
-        print(f'{survey} {color_type}: {exc}')
+        print(f"{survey} {color_type}: {exc}")
         return None
 
     # Verify required columns
@@ -461,7 +431,6 @@ def fit_and_select_red_sequence(
     if not _check_required_columns(matched_df, needed_matched, "matched_df"):
         print(f"Skipping {survey} {color_type}: missing required columns in matched_df.")
         return None
-
 
     a, b = fit_red_sequence(
         matched_df,
@@ -496,469 +465,276 @@ def fit_and_select_red_sequence(
         print(f"Skipping {survey} {color_type}: no photometric members after cuts.")
         return None
 
-    spec_all, phot_all = split_members_by_spec(
-        full_catalog,
-        z_col=Z_COL,
-    )
-
-    phot_all = phot_all.dropna(subset=required_cols).copy()
-
-
-    # --- Diagnostic Plotting ---
-    if plot_cmd_flag:
-        plot_cmd(
-            member_df=selected_df,
-            phot_df=phot_all,
-            a=a,
-            b=b,
-            survey=survey,
-            color_type=color_type,
-            save_name="Diagnostic",
-            ylim=ylim,
-            xlim=xlim,
-            show_plots=show_plots,
-            save_plots=save_plots,
-            save_path=save_path
-        )
-
-    if plot_spatial_flag:
-        plot_spatial(
-            member_df=selected_df,
-            phot_df=phot_all,
-            zmin=zmin,
-            zmax=zmax,
-            survey=survey,
-            color_type=color_type,
-            save_name="Diagnostic",
-            with_cmap=False,
-            show_plots=show_plots,
-            save_plots=save_plots,
-            save_path=save_path
-        )
-
-
     return selected_df
 
 
-# ------------------------------------
-# Plotting Utilities
-# ------------------------------------
+# ---------------------------------------------------------------
+# Member Catalog Construction
+# ---------------------------------------------------------------
 
-def plot_color_magnitude(
-        phot_df,
-        color_col,
-        mag_col,
-        title=None,
-        ax=None,
-        plot_legend=False,
-        color="gray",
-        ylim=(-4, 4),
-        xlim=(10, 27.5),
-        spec_df=None,
-        z_min=None,
-        z_max=None,
-        overlay_label="Spec-z members"
-    ) -> None:
-    """
-    Plots a single color-magnitude diagram with optional overlay of spec-z members.
+def build_member_catalog(
+    spec_df: pd.DataFrame,
+    redseq_df: pd.DataFrame,
+    z_min: float,
+    z_max: float,
+    *,
+    match_tol_arcsec: float = 3.0,
+) -> pd.DataFrame:
+    """Build a deduplicated cluster member catalog from spec + phot members.
+
+    Spec members: sources in ``spec_df`` with z between ``z_min`` and
+    ``z_max``.  Phot members: sources in ``redseq_df`` that have no
+    spectroscopic counterpart within ``match_tol_arcsec``.  One row per
+    sky position; ``member_type`` column indicates selection method.
 
     Parameters
     ----------
-    phot_df : pd.DataFrame
-        Catalog with color and magnitude columns.
-    color_col : str
-        Name of the color column (e.g., 'g_r').
-    mag_col : str
-        Name of the magnitude column (e.g., 'rmag').
-    title : str, optional
-        Plot title.
-    ax : matplotlib.axes.Axes, optional
-        Axis to plot on (if None, creates new figure).
-    plot_legend : bool
-        If True, adds legend to plot [default: False]
-    label : str, optional
-        Label for the photometric scatter plot.
-    color : str, optional
-        Color for the photometric points. [default: "gray"]
-    xlim : tuple, optional
-        Limits for the magnitude axis (x-axis) [default: (10, 27.5)]
-    ylim : tuple, optional
-        Limits for the color axis (y-axis) [default: (-4,4)]
-    spec_df : pd.DataFrame, optional
-        Matched spectroscopic sources to overlay.
-    z_min, z_max : float, optional
-        Redshift bounds for filtering `spec_df` before plotting.
-    overlay_label : str, optional
-        Legend label for spec-z overlay points [default: "Spec-z members"]
-    """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 4))
-
-    # Main photometric scatter
-    valid = phot_df[[color_col, mag_col]].dropna()
-    ax.scatter(valid[mag_col], valid[color_col], s=5, color=color, label="All photometric sources")
-
-    # Optional overlay
-    if spec_df is not None:
-        spec_valid = spec_df.copy()
-        if z_min is not None and z_max is not None and "z" in spec_valid.columns:
-            spec_valid = spec_valid[(spec_valid["z"] >= z_min) & (spec_valid["z"] <= z_max)]
-        spec_valid = spec_valid.dropna(subset=[color_col, mag_col])
-        if not spec_valid.empty:
-            ax.scatter(spec_valid[mag_col], spec_valid[color_col],
-                       s=20, color="crimson", marker="o", label=overlay_label, edgecolor="black")
-
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
-    ax.set_ylabel(color_col.replace("_", " - "))
-    ax.set_xlabel(f"{mag_col[0]} magnitude")
-
-    if title:
-        ax.set_title(title)
-    if plot_legend:
-        ax.legend()
-
-
-def plot_all_color_magnitude(
-        cluster: Cluster,
-        panstarrs_df: pd.DataFrame,
-        legacy_df: pd.DataFrame,
-        panstarrs_spec: pd.DataFrame | None = None,
-        legacy_spec: pd.DataFrame | None = None,
-        z_min: float | None = None,
-        z_max: float | None = None,
-        show_plots: bool = True,
-        save_plots: bool = False,
-        save_path: str | None = None
-    ) -> None:
-    """
-    Plot a grid of six color-magnitude diagrams (CMDs) for Pan-STARRS and Legacy photometric catalogs.
-
-    Each row shows three CMDs for one catalog:
-        - g-r vs r
-        - r-i vs i
-        - g-i vs i
-
-    Optionally overlays spectroscopically confirmed cluster members for each panel,
-    restricted to a redshift range if z_min and z_max are provided.
-
-    Parameters
-    ----------
-    cluster : Cluster
-        Cluster object containing all necessary metadata (paths, coordinates, etc.).
-    panstarrs_df : pd.DataFrame
-        Pan-STARRS photometric catalog, must include color columns (g_r, r_i, g_i) and mag columns (rmag, imag).
-    legacy_df : pd.DataFrame
-        Legacy photometric catalog, must include color columns (g_r, r_i, g_i) and mag columns (rmag, imag).
-    panstarrs_spec : pd.DataFrame | None, optional
-        Pan-STARRS catalog of spectroscopic matches to overlay [default: None].
-    legacy_spec : pd.DataFrame | None, optional
-        Legacy catalog of spectroscopic matches to overlay [default: None].
-    z_min, z_max : float | None, optional
-        If provided, only overlays spec-z members within this redshift range.
-    show_plots, save_plots : bool
-        Plot controls passed through to ``finalize_figure``.
-    save_path : str | None, optional
-        Directory (or full file path) for plot saving.
+    spec_df : pd.DataFrame
+        Combined spectroscopic catalog (e.g. combined_redshifts.csv).
+        Must have RA, Dec, z columns.
+    redseq_df : pd.DataFrame
+        Red sequence selected catalog (output of ``fit_and_select_red_sequence``).
+        Must have RA, Dec columns.
+    z_min, z_max : float
+        Cluster redshift range for selecting spectroscopic members.
+    match_tol_arcsec : float
+        Maximum separation (arcsec) for matching a phot source to a spec
+        source.  Matched phot sources are dropped (spec version kept).
 
     Returns
     -------
-    None
-        The function displays or saves the 2x3 grid of CMD plots.
+    pd.DataFrame
+        Deduplicated member catalog with ``member_type`` column
+        ("spec" or "phot").
     """
+    # --- Spec members: z in range ---
+    if spec_df.empty or Z_COL not in spec_df.columns:
+        spec_members = pd.DataFrame(columns=spec_df.columns if not spec_df.empty else [RA_COL, DEC_COL])
+    else:
+        spec_members = _filter_by_redshift(spec_df, z_min, z_max)
 
-    # Use cluster z_min/z_max unless overridden
-    z_min = z_min if z_min is not None else cluster.z_min
-    z_max = z_max if z_max is not None else cluster.z_max
+    spec_members = spec_members.copy()
+    spec_members["member_type"] = "spec"
 
-    fig, axs = plt.subplots(2, 3, figsize=(16, 12), sharex=False, sharey=False)
+    if redseq_df is None or redseq_df.empty:
+        # Only spec members available
+        return _finalize_member_columns(spec_members)
 
-    # Pan-STARRS
-    plot_color_magnitude(panstarrs_df, "g_r", "rmag", "Pan-STARRS: g-r vs r",
-                         ax=axs[0, 0], plot_legend=True, spec_df=panstarrs_spec, z_min=z_min, z_max=z_max)
-    plot_color_magnitude(panstarrs_df, "r_i", "imag", "Pan-STARRS: r-i vs i",
-                         ax=axs[0, 1], spec_df=panstarrs_spec, z_min=z_min, z_max=z_max)
-    plot_color_magnitude(panstarrs_df, "g_i", "imag", "Pan-STARRS: g-i vs i",
-                         ax=axs[0, 2], spec_df=panstarrs_spec, z_min=z_min, z_max=z_max)
+    # --- Phot members: red sequence sources without a spec match ---
+    redseq = redseq_df.copy()
 
-    # Legacy
-    plot_color_magnitude(legacy_df, "g_r", "rmag", "Legacy: g-r vs r",
-                         ax=axs[1, 0], spec_df=legacy_spec, z_min=z_min, z_max=z_max)
-    plot_color_magnitude(legacy_df, "r_i", "imag", "Legacy: r-i vs i",
-                         ax=axs[1, 1], spec_df=legacy_spec, z_min=z_min, z_max=z_max)
-    plot_color_magnitude(legacy_df, "g_i", "imag", "Legacy: g-i vs i",
-                         ax=axs[1, 2], spec_df=legacy_spec, z_min=z_min, z_max=z_max)
+    if spec_members.empty:
+        # No spec members to deduplicate against — all redseq are phot
+        redseq["member_type"] = "phot"
+        return _finalize_member_columns(pd.concat([spec_members, redseq], ignore_index=True))
 
-    finalize_figure(fig, show_plots=show_plots,
-                    save_plots=save_plots,
-                    save_path=save_path,
-                    filename="CMDs.pdf")
+    # Cross-match to find red sequence sources that already have a spec member
+    spec_coords = make_skycoord(spec_members[RA_COL].values, spec_members[DEC_COL].values)
+    redseq_coords = make_skycoord(redseq[RA_COL].values, redseq[DEC_COL].values)
+
+    _, matched_redseq_idx, _ = match_skycoords_unique(
+        spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
+    )
+
+    # Keep only red-sequence sources that do NOT have a spec match
+    phot_only_mask = np.ones(len(redseq), dtype=bool)
+    if len(matched_redseq_idx) > 0:
+        phot_only_mask[matched_redseq_idx] = False
+    phot_members = redseq.loc[phot_only_mask].copy()
+    phot_members["member_type"] = "phot"
+
+    # --- Merge spec members with phot-only columns from redseq ---
+    # For spec members that DO have a redseq match, pull in any
+    # photometric columns they might be missing (gmag, rmag, etc.)
+    if len(matched_redseq_idx) > 0:
+        # matched_redseq_idx are redseq rows matched to spec_coords in order
+        # match_skycoords_unique returns (spec_idx, redseq_idx, sep)
+        # so spec_idx and redseq_idx are paired
+        _, redseq_idx, _ = match_skycoords_unique(
+            spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
+        )
+        spec_idx_matched = np.arange(len(spec_members))
+        # Only use the matched subset
+        spec_idx_arr, redseq_idx_arr, _ = match_skycoords_unique(
+            spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
+        )
+        # Fill missing phot columns in spec members from matched redseq rows
+        phot_fill_cols = ["gmag", "rmag", "imag", "g_r", "r_i", "g_i",
+                          "lum_weight_r", PHOT_SOURCE_COL]
+        for col in phot_fill_cols:
+            if col in redseq.columns:
+                spec_vals = spec_members.iloc[spec_idx_arr].get(col)
+                redseq_vals = redseq.iloc[redseq_idx_arr][col].values
+                if spec_vals is not None:
+                    # Fill only where spec is missing
+                    needs_fill = spec_vals.isna().values
+                    fill_positions = spec_idx_arr[needs_fill]
+                    fill_values = redseq_vals[needs_fill]
+                    if len(fill_positions) > 0:
+                        spec_members.iloc[fill_positions, spec_members.columns.get_loc(col)] = fill_values
+                else:
+                    # Column doesn't exist in spec_members, add it
+                    spec_members[col] = np.nan
+                    spec_members.iloc[spec_idx_arr, spec_members.columns.get_loc(col)] = redseq_vals
+
+    members = pd.concat([spec_members, phot_members], ignore_index=True)
+    return _finalize_member_columns(members)
 
 
-def print_cluster_info(
-        cluster: Cluster,
-    ) -> None:
+def _finalize_member_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure the member catalog has all expected columns and canonical order.
+
+    Missing columns are filled with NaN (or appropriate defaults).
+    Extra columns are dropped.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Raw merged member catalog.
+
+    Returns
+    -------
+    pd.DataFrame
+        Cleaned catalog with columns in ``MEMBER_COLS`` order.
     """
-    Prints detailed cluster information including coordinates, redshift, source counts, BCGs, and member statistics.
+    out = df.copy()
+    for col in MEMBER_COLS:
+        if col not in out.columns:
+            out[col] = np.nan
+    return out[MEMBER_COLS].reset_index(drop=True)
+
+
+# ---------------------------------------------------------------
+# Main Entry Point
+# ---------------------------------------------------------------
+
+def run_redsequence(
+    cluster: Cluster,
+    *,
+    matched_dfs: dict[str, pd.DataFrame] | None = None,
+    survey: str | None = None,
+    color_type: str | None = None,
+) -> pd.DataFrame:
+    """Fit the red sequence and build a deduplicated cluster member catalog.
+
+    Reads: matched catalogs (from Stage 3) or loads from disk
+    Produces:
+        Members/cluster_members.csv -- deduplicated member catalog
+        Members/redseq_{survey}_{color}.csv -- per-fit intermediate results
 
     Parameters
     ----------
     cluster : Cluster
-        Cluster object containing all necessary metadata (paths, coordinates, etc.).
+        Cluster object with resolved z_range and valid paths.
+    matched_dfs : dict[str, DataFrame], optional
+        Per-survey matched catalogs keyed by survey name (e.g.
+        ``{"legacy": df}``).  If None, loads from disk at
+        ``Photometry/{survey}_matched.csv``.
+    survey : str, optional
+        Which survey to use. Default: ``cluster.survey`` (typically
+        ``"legacy"``).
+    color_type : str, optional
+        Which color to fit. Default: ``cluster.color_type`` (typically
+        ``"gr"``).
+
+    Returns
+    -------
+    members_df : DataFrame
+        Deduplicated member catalog with columns:
+        RA, Dec, z, sigma_z, spec_source, gmag, rmag, imag, g_r, r_i, g_i,
+        lum_weight_r, phot_source, member_type
     """
-    member_zrange = (cluster.z_min, cluster.z_max)
+    survey = survey or cluster.survey
+    color_type = color_type or cluster.color_type
+    z_min, z_max = cluster.z_min, cluster.z_max
 
-    # Load catalogs
-    ned_path = os.path.join(cluster.redshift_path, "ned.csv")
-    sdss_path = os.path.join(cluster.redshift_path, "sdss.csv")
-    desi_path = os.path.join(cluster.redshift_path, "desi.csv")
-    deimos_path = os.path.join(cluster.redshift_path, "deimos.csv")
-    archival_z_path = os.path.join(cluster.redshift_path, "archival_z.csv")
+    # Normalize survey to lowercase for file paths
+    survey_lower = survey.lower()
 
-    ned = pd.read_csv(ned_path)
-    sdss = pd.read_csv(sdss_path)
-    desi = pd.read_csv(desi_path)
-    deimos = pd.read_csv(deimos_path)
-    archival_z = pd.read_csv(archival_z_path)
+    # ---- Load matched catalog (spec+phot crossmatch) ----
+    if matched_dfs is not None and survey_lower in matched_dfs:
+        matched_df = matched_dfs[survey_lower]
+    else:
+        matched_path = os.path.join(
+            cluster.photometry_path, f"{survey_lower}_matched.csv"
+        )
+        if not os.path.isfile(matched_path):
+            raise FileNotFoundError(
+                f"Matched catalog not found: {matched_path}\n"
+                "Run Stage 3 (matching) first, or pass matched_dfs."
+            )
+        matched_df = pd.read_csv(matched_path)
+        print(f"Loaded matched catalog: {matched_path} ({len(matched_df)} rows)")
 
+    # ---- Load full photometry catalog ----
+    full_phot_path = os.path.join(
+        cluster.photometry_path, f"photometry_{survey_lower}.csv"
+    )
+    if not os.path.isfile(full_phot_path):
+        raise FileNotFoundError(
+            f"Full photometry catalog not found: {full_phot_path}\n"
+            "Run Stage 2 (photometry) first."
+        )
+    full_df = pd.read_csv(full_phot_path)
+    print(f"Loaded full photometry: {full_phot_path} ({len(full_df)} rows)")
 
-    combined, red_sequence, bcg_df = load_dataframes(cluster)
-    BCGs = []
-    for _, row in bcg_df.iterrows():
-        ra = row.get(RA_COL, None)
-        dec = row.get(DEC_COL, None)
-        z = row.get(Z_COL, None) if pd.notna(row.get(Z_COL, None)) else None
-        P = row.get("BCG_probability", None) if pd.notna(row.get("BCG_probability", None)) else None
-        BCGs.append((ra, dec, z, P))
+    # ---- Load combined spectroscopic catalog ----
+    spec_path = cluster.spec_file  # Redshifts/combined_redshifts.csv
+    if not os.path.isfile(spec_path):
+        raise FileNotFoundError(
+            f"Combined redshift catalog not found: {spec_path}\n"
+            "Run Stage 3 (matching) first."
+        )
+    spec_df = pd.read_csv(spec_path)
+    print(f"Loaded spectroscopic catalog: {spec_path} ({len(spec_df)} rows)")
 
+    # Coerce numeric columns that may have been read as strings
+    numeric_cols = ["gmag", "rmag", "imag", "g_r", "r_i", "g_i", "lum_weight_r", "z", "sigma_z"]
+    for df in (matched_df, full_df, spec_df):
+        present = [c for c in numeric_cols if c in df.columns]
+        if present:
+            coerce_to_numeric(df, present)
 
-    # Count sources from each survey
-    n_ned = len(ned)
-    n_sdss = len(sdss)
-    n_desi = len(desi)
-    n_deimos = len(deimos)
-    n_combined = len(combined)
-    new_deimos = len(combined)-len(archival_z)  # New spectroscopic redshifts only
-    n_archival = len(archival_z)
-
-    # Total unique sources
-    coords_all = SkyCoord(ra=combined['RA'].values * u.deg, dec=combined['Dec'].values * u.deg)
-    _, uniq_idx = np.unique(coords_all.to_string('decimal'), return_index=True)
-    total_unique = len(uniq_idx)
-
-    # Member count in range
-    z_members = combined['z'][(combined['z'] > member_zrange[0]) & (combined['z'] < member_zrange[1])]
-    n_members = len(z_members)
-
-    # Photometric members
-    phot_members = len(red_sequence) - n_members
-
-
-    print(f"\n=== Cluster Info Report: {cluster.name} ===")
-    print(f"Location: RA = {cluster.coords.ra.deg:.5f}, Dec = {cluster.coords.dec.deg:.5f}")
-    print(f"Redshift: z = {cluster.redshift:.5f}")
-    print("\nSource Counts:")
-    print(f"  NED:   {n_ned}")
-    print(f"  SDSS:  {n_sdss}")
-    print(f"  DESI:  {n_desi}")
-    print(f"  Total Combined: {n_combined}")
-    print(f"  Total Deimos: {n_deimos}")
-    print(f"  New Deimos: {new_deimos}")
-    print(f"  Total unique (post-merge): {total_unique}")
-    print(f"  Archival: {n_archival}")
-    print(f"  Cluster members in {member_zrange[0]:.3f} < z < {member_zrange[1]:.3f}: {n_members}")
-    print(f"  Photometric members (red sequence): {phot_members}")
-
-    print("\nBCG Candidates:")
-
-    for i, (ra, dec, z, P) in enumerate(BCGs):
-        z_str = f"{z:.4f}" if z is not None else "unknown"
-        P_str = f"P={P:.5f}" if P is not None else "P=unknown"
-        print(f"BCG {i+1}: RA = {ra:.5f}, Dec = {dec:.5f}, z = {z_str}, {P_str}")
-
-
-    print("=== End of Report ===\n")
-
-
-def run_cmd_pipeline(
+    # ---- Fit red sequence and select members ----
+    redseq_df = fit_and_select_red_sequence(
         cluster,
-        plot_cmd_flag,
-        plot_spatial_flag,
-        save_plots,
-        show_plots
-    ) -> None:
-
-    """
-    Run the color-magnitude diagram (CMD) and red sequence selection pipeline for a galaxy cluster.
-
-    This function:
-      - Loads photometric and redshift catalogs for a cluster.
-      - Crossmatches photometric catalogs (Pan-STARRS and Legacy) to redshift data.
-      - Plots all color-magnitude diagrams (CMDs) for both catalogs.
-      - Fits red sequence models for multiple color indices, selecting photometric cluster members.
-      - Saves resulting red sequence catalogs and (optionally) plots.
-
-    Parameters
-    ----------
-    redshift_folder : str
-        Path to folder containing the redshift catalog (e.g., '.../Redshifts').
-    photometry_folder : str
-        Path to folder containing photometry catalogs (e.g., '.../Photometry').
-    zmin : float
-        Lower redshift bound for cluster member selection.
-    zmax : float
-        Upper redshift bound for cluster member selection.
-    plot_cmd_flag : bool
-        If True, display or save CMD plots for each red sequence fit.
-    plot_spatial_flag : bool
-        If True, display or save spatial (RA-Dec) plots for each fit.
-    save_flag : bool
-        If True, save output plots to the 'Images/' subdirectory of the photometry folder. Otherwise, show interactively.
-
-    Returns
-    -------
-    None
-        All results are saved to CSV and/or as plots in the specified directories.
-    """
-
-    # All photometric catalogs
-    # panstarrs_df = pd.read_csv(os.path.join(cluster.photometry_path, "photometry_PanSTARRS.csv"))
-    # legacy_df = pd.read_csv(os.path.join(cluster.photometry_path, "photometry_legacy.csv"))
-
-    # Deduplicated combined spec/ phot catalogs
-    panstarrs_df= pd.read_csv(os.path.join(cluster.redshift_path, "panstarrs_catalog.csv"))
-    legacy_df = pd.read_csv(os.path.join(cluster.redshift_path, "legacy_catalog.csv"))
-
-
-    # Matched catalogs
-    matched_panstarrs = pd.read_csv(os.path.join(cluster.photometry_path, "panstarrs_matched.csv"))
-    matched_legacy = pd.read_csv(os.path.join(cluster.photometry_path, "legacy_matched.csv"))
-
-    img_dir = os.path.join(cluster.photometry_path, "Images")
-    os.makedirs(img_dir, exist_ok=True)
-
-    plot_all_color_magnitude(
-                            cluster=cluster,
-                            panstarrs_df=panstarrs_df,
-                            legacy_df=legacy_df,
-                            panstarrs_spec=matched_panstarrs,
-                            legacy_spec=matched_legacy,
-                            show_plots=show_plots,
-                            save_plots=save_plots,
-                            save_path=(os.path.join(img_dir, "CMDs.pdf")))
-
-    selected_PS_gr = fit_and_select_red_sequence(cluster, matched_df = matched_panstarrs, full_df = panstarrs_df, color_band = 0.15, color_type="g-r", survey="PanSTARRS",
-                                                                    plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots, save_path=img_dir)
-    if selected_PS_gr is not None:
-        selected_PS_gr.to_csv(os.path.join(cluster.photometry_path, "redseq_panstarrs_gr.csv"), index=False)
-
-    selected_PS_ri = fit_and_select_red_sequence(cluster, matched_df = matched_panstarrs, full_df = panstarrs_df, color_band = 0.15, color_type="r-i", survey="PanSTARRS",
-                                                                   plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots,save_path=img_dir)
-    if selected_PS_ri is not None:
-        selected_PS_ri.to_csv(os.path.join(cluster.photometry_path, "redseq_panstarrs_ri.csv"), index=False)
-
-    selected_PS_gi = fit_and_select_red_sequence(cluster, matched_df = matched_panstarrs, full_df = panstarrs_df, color_band = 0.15, color_type="g-i", survey="PanSTARRS",
-                                                                   plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots, save_path=img_dir)
-    if selected_PS_gi is not None:
-        selected_PS_gi.to_csv(os.path.join(cluster.photometry_path, "redseq_panstarrs_gi.csv"), index=False)
-
-    selected_Leg_gr = fit_and_select_red_sequence(cluster, matched_df = matched_legacy, full_df = legacy_df, color_band = 0.15, color_type="g-r", survey="Legacy",
-                                                                      plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots, save_path=img_dir)
-    if selected_Leg_gr is not None:
-        selected_Leg_gr.to_csv(os.path.join(cluster.photometry_path, "redseq_legacy_gr.csv"), index=False)
-
-    selected_Leg_ri = fit_and_select_red_sequence(cluster, matched_df = matched_legacy, full_df = legacy_df, color_band = 0.15, color_type="r-i", survey="Legacy",
-                                                                      plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots, save_path=img_dir)
-    if selected_Leg_ri is not None:
-        selected_Leg_ri.to_csv(os.path.join(cluster.photometry_path, "redseq_legacy_ri.csv"), index=False)
-
-    selected_Leg_gi = fit_and_select_red_sequence(cluster, matched_df = matched_legacy, full_df = legacy_df, color_band = 0.15, color_type="g-i", survey="Legacy",
-                                                                      plot_cmd_flag=plot_cmd_flag, plot_spatial_flag=plot_spatial_flag, save_plots=save_plots, show_plots=show_plots, save_path=img_dir)
-    if selected_Leg_gi is not None:
-        selected_Leg_gi.to_csv(os.path.join(cluster.photometry_path, "redseq_legacy_gi.csv"), index=False)
-
-    print_cluster_info(cluster)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Run red sequence photometry pipeline")
-    parser.add_argument(
-        "cluster_id",
-        type=str,
-        help="Cluster ID (e.g. '1327') or full RMJ/Abell name."
-    )
-    parser.add_argument(
-        "--zmin",
-        type=float,
-        default=0.0,
-        help="Minimum cluster redshift"
-    )
-    parser.add_argument(
-        "--zmax",
-        type=float,
-        default=1.5,
-        help="Maximum cluster redshift"
-    )
-    parser.add_argument(
-        "-p",
-        "--path",
-        type=str,
-        default=os.getcwd(),
-        help="Science directory path (default: current directory)"
-    )
-    parser.add_argument(
-        '--plot-cmd',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Whether to plot CMD. (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    parser.add_argument(
-        '--plot-spatial',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Whether to plot RA-DEC member map. (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    parser.add_argument(
-        '--save-plots',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Whether to save plots to file. (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    parser.add_argument(
-        '--show-plots',
-        type=str2bool,
-        nargs='?',
-        const=True,
-        default=True,
-        help="Whether to show plots interactively. (default: True). Accepts true/false, yes/no, y/n, t/f, 1/0."
-    )
-    args = parser.parse_args()
-
-    cluster = Cluster(args.cluster_id, base_path=args.path)
-    cluster.populate()
-
-    if args.zmin is not None:
-        cluster.z_min = args.zmin
-    if args.zmax is not None:
-        cluster.z_max = args.zmax
-    if cluster.z_min is None:
-        cluster.z_min = cluster.redshift - 0.015
-    if cluster.z_max is None:
-        cluster.z_max = cluster.redshift + 0.015
-
-    run_cmd_pipeline(
-        cluster=cluster,
-        plot_cmd_flag=args.plot_cmd,
-        plot_spatial_flag=args.plot_spatial,
-        save_plots=args.save_plots,
-        show_plots=args.show_plots
+        matched_df=matched_df,
+        full_df=full_df,
+        color_band=0.15,
+        color_type=color_type,
+        survey=survey,
+        zmin=z_min,
+        zmax=z_max,
     )
 
-if __name__ == "__main__":
-    main()
+    # ---- Build deduplicated member catalog ----
+    members_df = build_member_catalog(
+        spec_df=spec_df,
+        redseq_df=redseq_df if redseq_df is not None else pd.DataFrame(),
+        z_min=z_min,
+        z_max=z_max,
+    )
+
+    n_spec = (members_df["member_type"] == "spec").sum()
+    n_phot = (members_df["member_type"] == "phot").sum()
+    print(f"Member catalog: {len(members_df)} total ({n_spec} spec, {n_phot} phot)")
+
+    # ---- Write outputs ----
+    os.makedirs(cluster.members_path, exist_ok=True)
+
+    members_path = os.path.join(cluster.members_path, "cluster_members.csv")
+    members_df.to_csv(members_path, index=False)
+    print(f"Wrote {members_path}")
+
+    # Normalize color_type for filename (strip hyphens: "g-r" -> "gr")
+    color_tag = color_type.replace("-", "")
+    redseq_path = os.path.join(
+        cluster.members_path, f"redseq_{survey_lower}_{color_tag}.csv"
+    )
+    if redseq_df is not None and not redseq_df.empty:
+        redseq_df.to_csv(redseq_path, index=False)
+        print(f"Wrote {redseq_path}")
+    else:
+        print(f"No red sequence members to write for {survey} {color_type}.")
+
+    return members_df

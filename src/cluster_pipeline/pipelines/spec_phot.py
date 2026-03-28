@@ -96,8 +96,7 @@ import json
 from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
 from cluster_pipeline.catalog.photometry import run_photometry
 from cluster_pipeline.catalog.matching import run_matching
-from cluster_pipeline.catalog.redsequence import run_cmd_pipeline
-from cluster_pipeline.plotting.cmd import run_cluster_plots
+from cluster_pipeline.catalog.redsequence import run_redsequence
 from cluster_pipeline.utils import str2bool
 from cluster_pipeline.models.cluster import Cluster
 
@@ -295,36 +294,16 @@ def run_full_pipeline(
         print("\n--- Skipping catalog builder pipeline ---")
 
 
-    # Step 4: Color-magnitude selection
+    # Step 4: Red sequence fitting + member catalog
     if not skip_cmd:
         print("\n--- Running red sequence fitting pipeline ---")
-        run_cmd_pipeline(
-            cluster=cluster,
-            plot_cmd_flag=True,
-            plot_spatial_flag=True,
-            show_plots=show_plots,
-            save_plots=save_plots,
-            **cmd_kwargs,
-        )
+        run_redsequence(cluster)
     else:
         print("\n--- Skipping red sequence fitting pipeline ---")
 
-
-    # Step 5: Plots
+    # Step 5: Plots (TODO: wire to refactored plotting)
     if not skip_plots:
-        print("\n--- Running plotting utility ---")
-        run_cluster_plots(
-            cluster=cluster,
-            fov_size=cluster.fov,
-            survey=cluster.survey,
-            color_type=cluster.color_type,
-            ra_offset=cluster.ra_offset,
-            dec_offset=cluster.dec_offset,
-            bandwidth=cluster.bandwidth,
-            save_plots=save_plots,
-            show_plots=show_plots,
-            **plotting_kwargs,
-        )
+        print("\n--- Plotting stage not yet wired (TODO) ---")
     else:
         print("\n--- Skipping plotting utility ---")
 
