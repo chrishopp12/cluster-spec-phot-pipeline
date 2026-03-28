@@ -22,6 +22,8 @@ def main():
 
 @main.command()
 @click.argument("cluster_id")
+@click.option("--base-path", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Base directory for cluster data (default: ~/XSorter/Clusters/).")
 @click.option("--stages", multiple=True, type=click.Choice(["spec", "phot", "xray"], case_sensitive=False),
               help="Pipeline stages to run. Omit to run all.")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
@@ -45,7 +47,7 @@ def main():
 # Xray options
 @click.option("--subclusters", multiple=True, type=int, help="BCG indices for subclusters (e.g., --subclusters 2 6 7).")
 @click.option("--radius", type=float, default=None, help="Subcluster search radius (Mpc).")
-def run(cluster_id, stages, save, save_plots, show_plots,
+def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         skip_redshifts, skip_photometry, skip_catalogs, skip_cmd, skip_plots,
         ra, dec, redshift, z_min, z_max, fov, psf, survey,
         subclusters, radius):
@@ -68,7 +70,7 @@ def run(cluster_id, stages, save, save_plots, show_plots,
             cli_overrides[key] = val
 
     # Create and populate the Cluster
-    cluster = Cluster(cluster_id, **cli_overrides)
+    cluster = Cluster(cluster_id, base_path=base_path, **cli_overrides)
     cluster.populate(verbose=True)
 
     # Load and merge config
@@ -136,10 +138,12 @@ def run(cluster_id, stages, save, save_plots, show_plots,
 
 @main.command()
 @click.argument("cluster_id")
+@click.option("--base-path", type=click.Path(file_okay=False),
+              default=None, help="Base directory for cluster data.")
 @click.option("--ra", type=float, help="Right ascension (degrees).")
 @click.option("--dec", type=float, help="Declination (degrees).")
 @click.option("--redshift", type=float, default=None, help="Cluster redshift.")
-def init(cluster_id, ra, dec, redshift):
+def init(cluster_id, base_path, ra, dec, redshift):
     """Initialize a new cluster directory and config."""
     from cluster_pipeline.models.cluster import Cluster
     from cluster_pipeline.config import save_config, get_default_config
@@ -152,7 +156,7 @@ def init(cluster_id, ra, dec, redshift):
     if redshift is not None:
         kwargs["redshift"] = redshift
 
-    cluster = Cluster(cluster_id, **kwargs)
+    cluster = Cluster(cluster_id, base_path=base_path, **kwargs)
     cluster.populate(verbose=True)
 
     # Create config with defaults + discovered values
@@ -181,12 +185,14 @@ def init(cluster_id, ra, dec, redshift):
 
 @main.command()
 @click.argument("cluster_id")
-def info(cluster_id):
+@click.option("--base-path", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Base directory for cluster data.")
+def info(cluster_id, base_path):
     """Display summary information for a cluster."""
     from cluster_pipeline.models.cluster import Cluster
     from cluster_pipeline.config import load_config
 
-    cluster = Cluster(cluster_id)
+    cluster = Cluster(cluster_id, base_path=base_path)
     cluster.populate(verbose=False)
 
     click.echo(cluster)
