@@ -1,11 +1,12 @@
 """Shared plotting utilities: figure saving, scale bars, BCG markers."""
 
 from __future__ import annotations
+
 import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,11 @@ import matplotlib.pyplot as plt
 import astropy.units as u
 
 from cluster_pipeline.utils import pop_prefixed_kwargs
+from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.utils.cosmology import redshift_to_proper_distance
+
+if TYPE_CHECKING:
+    from cluster_pipeline.models.bcg import BCG
 
 
 def setup_plot_style():
@@ -200,81 +205,115 @@ def add_scalebar(
     )
 
 
+# --------------------------------------------------------------------------
+# Default BCG marker palette (indexed by position in the BCG list)
+# --------------------------------------------------------------------------
+_BCG_COLORS = [
+    'white',        # swapped to black on light backgrounds
+    'tab:green',
+    'tab:purple',
+    'tab:cyan',
+    'tab:pink',
+    'gold',
+    'tab:orange',
+    'tab:green',
+    'tab:purple',
+    'tab:pink',
+]
+
+
+def _bcgs_from_csv(path: str) -> list[BCG]:
+    """Read a BCGs.csv file and return a list of BCG objects.
+
+    This keeps backward compatibility for callers that still pass a file path.
+    """
+    from cluster_pipeline.models.bcg import BCG
+
+    df = pd.read_csv(path)
+    bcgs: list[BCG] = []
+    for i, row in df.iterrows():
+        bcg = BCG.from_dataframe_row(row, bcg_id=i + 1)
+        # Assign a default label if the CSV didn't provide one
+        if not bcg.label or bcg.label == str(bcg.bcg_id):
+            if i < 5:
+                bcg.label = str(i + 1)
+            else:
+                bcg.label = chr(ord("A") + i - 5)  # "A", "B", "C", ...
+        bcgs.append(bcg)
+    return bcgs
+
+
 def overlay_bcg_markers(
     ax: plt.Axes,
-    bcg_csv: str,
-    background: str = "light",    # or "dark"
+    bcgs: list[BCG] | str,
+    background: str = "light",
     zorder: int = 11,
     legend: bool = True,
-    legend_loc: str = "upper left"
+    legend_loc: str = "upper left",
 ) -> plt.Axes:
-    """
-    Overlay BCG markers on a WCS-aware matplotlib axis.
+    """Overlay BCG markers on a WCS-aware matplotlib axis.
 
     Parameters
     ----------
     ax : matplotlib.axes.Axes
-        Axis to plot markers on.
-    bcg_csv : str
-        Path to the BCG CSV file.
+        Axis to plot markers on (should be WCS-aware).
+    bcgs : list[BCG] or str
+        BCG objects to plot, or path to a BCGs.csv file for backward
+        compatibility.
     background : str
-        "light" or "dark" (controls primary marker color).
+        ``"light"`` or ``"dark"`` -- controls the primary marker color for
+        BCG 1 (black on light backgrounds, white on dark). [default: "light"]
     zorder : int
-        Z-order for plotting.
+        Z-order for the marker layer. [default: 11]
     legend : bool
-        Whether to add a legend.
+        Whether to add a legend. [default: True]
     legend_loc : str
-        Legend location.
-    """
-    # Load BCGs
-    df = pd.read_csv(bcg_csv)
-    bcg_colors = [
-        'white',
-        'tab:green',
-        'tab:purple',
-        'tab:cyan',
-        'tab:pink',
-        'gold',
-        'tab:orange',
-        'tab:green',
-        'tab:purple',
-        'tab:pink'
-    ]
-    bcg_labels = ['A', 'B', 'C', 'D', 'E', 'F']
+        Legend location string passed to ``ax.legend``. [default: "upper left"]
 
-    # Optionally swap white/black for BCG 1 depending on background
-    if background == "dark":
-        bcg_colors[0] = "white"
-    elif background == "light":
-        bcg_colors[0] = "black"
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The input axis, for optional chaining.
+    """
+    # Accept either a list of BCG objects or a CSV path (backward compat)
+    if isinstance(bcgs, (str, os.PathLike)):
+        bcgs = _bcgs_from_csv(str(bcgs))
 
     handles = []
-    for i, row in df.iterrows():
-        ra = float(row['RA'])
-        dec = float(row['Dec'])
-        z_bcg = row['z'] if not pd.isnull(row['z']) else None
+    for i, bcg in enumerate(bcgs):
+        # --- color ---
+        # Allow BCG objects to carry an explicit color (future-proofing);
+        # fall back to the default palette.
+        color = getattr(bcg, "color", None) or _BCG_COLORS[i % len(_BCG_COLORS)]
 
-        color = bcg_colors[i % len(bcg_colors)]
-        if i < 5:
-            label = f"BCG {i+1} (z = {'unknown' if z_bcg is None else f'{z_bcg:.3f}'})"
-            marker = '*'
+        # Swap the first BCG's color based on background
+        if i == 0:
+            color = "black" if background == "light" else "white"
+
+        # --- marker style ---
+        # Stars for the first 5 (bcg_id 1-5), circles for the rest
+        marker = "*" if bcg.bcg_id <= 5 else "o"
+
+        # --- label ---
+        z_str = "unknown" if bcg.z is None else f"{bcg.z:.3f}"
+        if bcg.label:
+            display_label = f"BCG {bcg.label} (z = {z_str})"
         else:
-            label = f"BCG {bcg_labels[i-5]} (z = {'unknown' if z_bcg is None else f'{z_bcg:.3f}'})"
-            marker = 'o'
+            display_label = f"BCG {bcg.bcg_id} (z = {z_str})"
 
-        # Plot
+        # --- plot ---
+        coord = make_skycoord([bcg.ra], [bcg.dec])
         sc = ax.scatter(
-            ra,
-            dec,
+            coord.ra.deg,
+            coord.dec.deg,
             marker=marker,
             edgecolor=color,
-            facecolor='none',
+            facecolor="none",
             s=200,
             zorder=zorder,
-            transform=ax.get_transform('icrs'),
-            label=label
+            transform=ax.get_transform("icrs"),
+            label=display_label,
         )
-        # For manual legend
         if legend:
             handles.append(sc)
 

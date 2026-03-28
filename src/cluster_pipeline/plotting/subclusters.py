@@ -1,10 +1,30 @@
-"""Multi-panel subcluster visualization: members, regions, histograms, and publication figures."""
+"""Multi-panel subcluster visualization: members, regions, histograms, and publication figures.
+
+Functions
+---------
+plot_subcluster_members_and_regions
+    Scatter members and draw bisector arcs on an optical WCS image.
+plot_redshift_and_subclusters_figure
+    Two-panel: redshift overlay + subcluster regions.
+plot_stacked_redshift_histograms
+    Vertically stacked redshift/velocity histograms per subcluster.
+plot_redshift_histogram_heatmap
+    Optical + colormap redshift scatter with histogram inset.
+plot_2panel_optical_contours
+    Plain optical vs. optical + contour overlays.
+plot_3panel_optical_subclusters_figure
+    Three-panel: optical, contours, subcluster regions.
+plot_combined_4panel_figure
+    2x2 publication figure combining contour, redshift, and subcluster panels.
+plot_subcluster_regions_and_histograms
+    Stacked histograms above a spatial regions panel.
+"""
 
 from __future__ import annotations
 
 import os
 from collections import defaultdict
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -29,13 +49,17 @@ from cluster_pipeline.plotting.arcs import (
     add_region_fill_clipped_to_signature,
 )
 from cluster_pipeline.utils.cosmology import redshift_to_proper_distance
+from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.utils import pop_prefixed_kwargs
+
+if TYPE_CHECKING:
+    from cluster_pipeline.models.subcluster import Subcluster
 
 
 # -- Figures and Plots --
 def plot_subcluster_members_and_regions(
     cluster,
-    subcluster_configs,
+    subclusters,
     spec_groups,
     combined_configs=None,
     spec_groups_combined=None,
@@ -58,11 +82,8 @@ def plot_subcluster_members_and_regions(
     ----------
     cluster : Cluster
         Cluster object (must provide .get_optical_image(), .xray_file, .phot_file(), .bcg_file).
-    subcluster_configs : list of dict
-        List of subcluster definitions. Each dict should contain:
-            - 'center': SkyCoord
-            - 'color': matplotlib color (optional)
-            - ...additional keys as needed.
+    subclusters : list[Subcluster]
+        Subcluster objects defining regions, colors, and member data.
     spec_groups : list of pd.DataFrame
         Each DataFrame contains spectroscopic members for a subcluster.
     phot_groups : list of pd.DataFrame, optional
@@ -97,9 +118,9 @@ def plot_subcluster_members_and_regions(
     subcluster_kwargs = pop_prefixed_kwargs(kwargs, 'subcluster')
 
     if combined_configs is not None:
-        colors = [sub.get('color') for sub in combined_configs]
+        colors = [sub.color for sub in combined_configs]
     else:
-        colors = [sub.get('color') for sub in subcluster_configs]
+        colors = [sub.color for sub in subclusters]
 
     if spec_groups_combined is not None:
         spec_groups = spec_groups_combined
@@ -171,11 +192,11 @@ def plot_subcluster_members_and_regions(
     #                      transform=ax.get_transform('icrs'))
 
     # Subcluster region arcs
-    bisectors = get_bisectors(subcluster_configs)
-    bcg_signatures = build_bcg_signatures(subcluster_configs, bisectors)
+    bisectors = get_bisectors(subclusters)
+    bcg_signatures = build_bcg_signatures(subclusters, bisectors)
     plot_bcg_region_arcs(
         ax,
-        subcluster_configs,
+        subclusters,
         bisectors,
         bcg_signatures,
         combined_indices=combined_indices,
@@ -199,7 +220,7 @@ def plot_subcluster_members_and_regions(
 
 def plot_redshift_and_subclusters_figure(
     cluster,
-    subcluster_configs,
+    subclusters,
     spec_groups,
     phot_groups,
     combined_indices=None,
@@ -226,15 +247,10 @@ def plot_redshift_and_subclusters_figure(
     ----------
     cluster : Cluster
         Cluster object (must have .spec_file, .xray_file, .phot_file(), .bcg_file, etc.)
-    subcluster_configs : list of dict
-        Each dict must have at least:
-            - 'center': SkyCoord
-            - 'radius': float (arcmin)
-            - 'color': matplotlib color (optional, for region and members)
-            - 'label': str (optional, for legend)
-        Can include any additional config keys for advanced use.
+    subclusters : list[Subcluster]
+        Subcluster objects defining regions, colors, and member data.
     spec_groups, phot_groups : list of pd.DataFrame
-        List of DataFrames with cluster member galaxies for each subcluster (matched in order to subcluster_configs).
+        List of DataFrames with cluster member galaxies for each subcluster (matched in order to subclusters).
     fig, ax1, ax2 : optional
         Optionally provide pre-existing Figure and Axes.
     legend_loc : str
@@ -337,7 +353,7 @@ def plot_redshift_and_subclusters_figure(
     # ----- Bottom Panel: Subcluster members and regions -----
     fig, ax2 = plot_subcluster_members_and_regions(
                                     cluster=cluster,
-                                    subcluster_configs=subcluster_configs,
+                                    subclusters=subclusters,
                                     combined_configs=combined_configs,
                                     spec_groups=spec_groups,
                                     phot_groups=phot_groups,
@@ -369,7 +385,7 @@ def plot_redshift_and_subclusters_figure(
 
 def plot_stacked_redshift_histograms(
     cluster,
-    subcluster_configs,
+    subclusters,
     spec_groups,
     bins=24,
     combined_color='darkorange',
@@ -388,8 +404,8 @@ def plot_stacked_redshift_histograms(
     ----------
     cluster : Cluster
         Cluster object with necessary metadata (spec_file, z_min, z_max, etc).
-    subcluster_configs : list of dict
-        Subcluster definitions (should include at least 'color', 'label', and optionally 'z_bcg' and 'bcg_label').
+    subclusters : list[Subcluster]
+        Subcluster objects (color, label, and primary_bcg.z used for annotations).
     spec_groups : list of pd.DataFrame
         Each DataFrame contains spectroscopic members for a subcluster (must include 'z').
     bins : int, optional
@@ -417,7 +433,7 @@ def plot_stacked_redshift_histograms(
     z = spec_df['z'].values
 
     # Prepare data per subcluster
-    colors = [sub.get('color') for sub in subcluster_configs]
+    colors = [sub.color for sub in subclusters]
     z_data, vel_data = analyze_group(spec_groups)
 
     # Filter redshifts
@@ -452,7 +468,7 @@ def plot_stacked_redshift_histograms(
     vel_data = vel_data[::-1]
     y_max_list = y_max_list[::-1]
     colors = colors[::-1]
-    subcluster_configs = subcluster_configs[::-1]
+    subclusters = subclusters[::-1]
 
     # For the combined plot
     combined_counts, _ = np.histogram(all_z, bins=hist_bins)
@@ -477,7 +493,7 @@ def plot_stacked_redshift_histograms(
         color = colors[i]
         if color == 'white':
             color = 'gainsboro'
-        z_bcg = subcluster_configs[i].get('z_bcg', None)
+        z_bcg = subclusters[i].primary_bcg.z if subclusters[i].primary_bcg is not None else None
 
         ax = axes[i]
         ax.hist(z_vals, bins=hist_bins, color=color, edgecolor='black', alpha=1.0)
@@ -497,7 +513,7 @@ def plot_stacked_redshift_histograms(
 
         # Plot BCG redshift line if available
         if z_bcg is not None:
-            ax.axvline(z_bcg, color='tab:red', linestyle='-', lw=1.6, label=f'BCG {subcluster_configs[i]["bcg_label"]}')
+            ax.axvline(z_bcg, color='tab:red', linestyle='-', lw=1.6, label=f'BCG {subclusters[i].label}')
 
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
@@ -529,15 +545,17 @@ def plot_stacked_redshift_histograms(
     ax_comb.set_xlabel(' ',fontsize=6)
 
     colors = colors[::-1]
-    subcluster_configs = subcluster_configs[::-1]
+    subclusters = subclusters[::-1]
 
 
-    for z_bcg, i in zip([subcluster_configs[i].get('z_bcg', None) for i in range(n_subclusters)], range(n_subclusters)):
+    for i in range(n_subclusters):
+        sub = subclusters[i]
+        z_bcg = sub.primary_bcg.z if sub.primary_bcg is not None else None
         color = colors[i]
         if color == 'white':
             color = 'gainsboro'
         if z_bcg is not None:
-            ax_comb.axvline(z_bcg, color=color, linestyle='-', lw=1.6, label=f'BCG {subcluster_configs[i]["bcg_label"]}')
+            ax_comb.axvline(z_bcg, color=color, linestyle='-', lw=1.6, label=f'BCG {sub.label}')
 
 
     ax_comb.annotate(
@@ -760,7 +778,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
 
 def plot_2panel_optical_contours(
         cluster,
-        subcluster_configs,
+        subclusters,
         fig=None, ax1=None, ax2=None,
         legend_loc='upper right',
         show_plots=True,
@@ -779,8 +797,8 @@ def plot_2panel_optical_contours(
     ----------
     cluster : Cluster
         Cluster object (must have .spec_file, .xray_file, .phot_file(), .bcg_file, etc.)
-    subcluster_configs : list of dict
-        Future use
+    subclusters : list[Subcluster]
+        Subcluster objects (reserved for future use).
     fig, ax1, ax2 : optional
         Optionally provide pre-existing Figure and Axes.
     legend_loc : str
@@ -880,7 +898,7 @@ def plot_2panel_optical_contours(
 
 def plot_3panel_optical_subclusters_figure(
     cluster,
-    subcluster_configs,
+    subclusters,
     spec_groups,
     phot_groups,
     combined_configs=None,
@@ -909,6 +927,8 @@ def plot_3panel_optical_subclusters_figure(
     ----------
     cluster : Cluster
         Cluster object (must provide .get_optical_image(), .xray_file, .phot_file(), .bcg_file).
+    subclusters : list[Subcluster]
+        Subcluster objects defining regions, colors, and member data.
     fig : matplotlib.figure.Figure, optional
         Existing Figure object to use (otherwise created).
     axes : list of Axes or None
@@ -995,7 +1015,7 @@ def plot_3panel_optical_subclusters_figure(
     # Panel 3: Subcluster members and regions
     fig, ax3 = plot_subcluster_members_and_regions(
                                 cluster=cluster,
-                                subcluster_configs=subcluster_configs,
+                                subclusters=subclusters,
                                 combined_configs=combined_configs,
                                 spec_groups=spec_groups,
                                 spec_groups_combined=spec_groups_combined,
@@ -1033,7 +1053,7 @@ def plot_3panel_optical_subclusters_figure(
 
 def plot_combined_4panel_figure(
                         cluster,
-                        subcluster_configs,
+                        subclusters,
                         spec_groups,
                         phot_groups,
                         combined_configs=None,
@@ -1059,8 +1079,8 @@ def plot_combined_4panel_figure(
     ----------
     cluster : Cluster
         Cluster object with necessary file references and metadata.
-    subcluster_configs : list of dict
-        Subcluster configuration dictionaries.
+    subclusters : list[Subcluster]
+        Subcluster objects defining regions, colors, and member data.
     spec_groups : list of pd.DataFrame
         List of spectroscopic member DataFrames for each subcluster.
     phot_groups : list of pd.DataFrame
@@ -1100,9 +1120,7 @@ def plot_combined_4panel_figure(
     # LEFT COLUMN
     plot_2panel_optical_contours(
                                 cluster=cluster,
-                                subcluster_configs=subcluster_configs,
-                                spec_groups=spec_groups,
-                                phot_groups=phot_groups,
+                                subclusters=subclusters,
                                 fig=fig, ax1=ax1, ax2=ax2,
                                 legend_loc=legend_loc,
                                 layout="vertical",
@@ -1114,7 +1132,7 @@ def plot_combined_4panel_figure(
     # RIGHT COLUMN
     _,_,_, sc= plot_redshift_and_subclusters_figure(
                                 cluster=cluster,
-                                subcluster_configs=subcluster_configs,
+                                subclusters=subclusters,
                                 combined_configs=combined_configs,
                                 spec_groups=spec_groups,
                                 phot_groups=phot_groups,
@@ -1161,7 +1179,7 @@ def plot_combined_4panel_figure(
 
 def plot_subcluster_regions_and_histograms(
     cluster,
-    subcluster_configs,
+    subclusters,
     spec_groups,
     phot_groups,
     spec_groups_combined=None,
@@ -1188,8 +1206,8 @@ def plot_subcluster_regions_and_histograms(
     ----------
     cluster : Cluster
         Cluster object with necessary metadata (spec_file, z_min, z_max, etc).
-    subcluster_configs : list of dict
-        Subcluster definitions (with 'color', 'center', and optional 'z_bcg', 'bcg_label', etc).
+    subclusters : list[Subcluster]
+        Subcluster objects (color, region_center, primary_bcg.z, display_label used for annotations).
     spec_groups : list of pd.DataFrame
         Each DataFrame contains spectroscopic members for a subcluster.
     phot_groups : list of pd.DataFrame
@@ -1217,11 +1235,11 @@ def plot_subcluster_regions_and_histograms(
 
     # Prepare data per subcluster
     if combined_configs is not None:
-        colors = [sub.get('color') for sub in combined_configs]
+        colors = [sub.color for sub in combined_configs]
         z_group = spec_groups_combined
         print("Using combined subcluster configurations for colors and data.")
     else:
-        colors = [sub.get('color') for sub in subcluster_configs]
+        colors = [sub.color for sub in subclusters]
         z_group = spec_groups
 
     print(f"Colors: {colors}")
@@ -1238,7 +1256,7 @@ def plot_subcluster_regions_and_histograms(
 
     n_subclusters = len(z_data)
     print(f"Number of subclusters: {n_subclusters}")
-    print(f"Subcluster configs: {subcluster_configs}")
+    print(f"Subclusters: {subclusters}")
     hist_bins = np.linspace(min(np.concatenate(z_data)), max(np.concatenate(z_data)), 24)
     y_max_list = [np.histogram(zs, bins=hist_bins)[0].max() for zs in z_data]
     y_max_list = [2 if val == 1 else val for val in y_max_list]
@@ -1257,17 +1275,17 @@ def plot_subcluster_regions_and_histograms(
     hist_bins = np.linspace(min(np.concatenate(z_data)), max(np.concatenate(z_data)), 24)
     group_labels = []
     for i, ax in enumerate(ax_list):
-        if subcluster_configs[i].get('group_label') in group_labels:
+        if subclusters[i].display_label in group_labels:
             j = i+1
         else:
             j = i
-            group_labels.append(subcluster_configs[i].get('group_label'))
+            group_labels.append(subclusters[i].display_label)
         zs = z_data[i]
         z_mean = vel_data[i][1]
         sigma_v = vel_data[i][2]
         color = colors[i] if colors[i] != 'white' else 'gainsboro'
-        z_bcg = subcluster_configs[j].get('z_bcg', None)
-        bcg_label = subcluster_configs[j].get('group_label', f"{j+1}")
+        z_bcg = subclusters[j].primary_bcg.z if subclusters[j].primary_bcg is not None else None
+        bcg_label = subclusters[j].display_label
 
         ax.hist(zs, bins=hist_bins, color=color, edgecolor='black')
         ax.axvline(z_mean, color='black', lw=1.5, linestyle='-', label=f"$\\bar{{z}}$ = {z_mean:.4f}")
@@ -1295,7 +1313,7 @@ def plot_subcluster_regions_and_histograms(
     # ---------------- Top Panel: Contours + Regions ----------------
     plot_subcluster_members_and_regions(
                                     cluster=cluster,
-                                    subcluster_configs=subcluster_configs,
+                                    subclusters=subclusters,
                                     combined_configs=combined_configs,
                                     spec_groups=spec_groups,
                                     spec_groups_combined=spec_groups_combined,
