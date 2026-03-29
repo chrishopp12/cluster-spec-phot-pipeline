@@ -132,3 +132,11 @@ pytest                                                     # Run tests
 - All v1 code removed (shims deleted)
 - Full pipeline runs end-to-end on RMJ 1327
 - ~60 plots, 7 table files, 10+ catalog files generated per cluster run
+- Systematic cleanup pass completed (2026-03-28):
+  - Dead code: 773 lines removed from pipelines/xray.py, obsolete functions deleted
+  - CLI: `--verbose/--no-verbose` and `--diagnostics/--no-diagnostics` flags added
+  - Constants: all analysis defaults centralized in constants.py
+  - Structure: build_subcluster_summary decomposed, plotting moved out of statistics.py
+  - Headers: all modules have full reference-style headers (see catalog/photometry.py)
+  - Exception messages include type(e).__name__ for debugging
+  - Test data at ~/Clusters/pipeline_v2_tests/RMJ_1327/
