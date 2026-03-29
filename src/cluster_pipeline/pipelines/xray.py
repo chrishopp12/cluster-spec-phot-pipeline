@@ -45,7 +45,6 @@ from cluster_pipeline.subclusters.statistics import (
     make_stats_table,
     analyze_group,
     build_subcluster_summary,
-    plot_stacked_velocity_histograms,
 )
 from cluster_pipeline.plotting.subclusters import (
     plot_subcluster_members_and_regions,

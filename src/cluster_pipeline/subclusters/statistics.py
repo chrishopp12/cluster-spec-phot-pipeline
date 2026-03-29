@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import ConnectionPatch
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
 from sklearn.mixture import GaussianMixture
@@ -41,8 +40,6 @@ from astropy.table import Table
 from astropy.stats import biweight_location, biweight_midvariance
 from astropy.constants import c
 from astropy import units as u
-
-from itertools import cycle
 
 import scipy.stats
 
@@ -378,7 +375,8 @@ def get_velocities(gaussians, z, verbose=False):
 
 
 def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, output_folder=None, max_components=None, save_plots=True, show_plots=True, verbose=True):
-
+    # Lazy import — plotting functions live in plotting module to maintain separation
+    from cluster_pipeline.plotting.subclusters import plot_gmm_histogram, plot_stacked_velocity_histograms
 
     # -- Load Redshift Data --
     if input_csv is None:
@@ -446,219 +444,6 @@ def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, o
     plot_stacked_velocity_histograms(vel_data_field, bins=25, color=field_colors, combined_color='orange', save_path=vel_path, save_plots=save_plots, show_plots=show_plots)
     vel_path = os.path.join(image_folder, "velocity_histograms_cluster.pdf")
     plot_stacked_velocity_histograms(vel_data_cluster, bins=25, color=cluster_colors, combined_color='orange', with_all=True, save_path=vel_path, save_plots=save_plots, show_plots=show_plots)
-
-
-def plot_gmm_histogram(z, valid_gaussians, plot_total=True, bins=60, n_inset_max=4, show=True, fit_info=None, save_path=None, save_plots=True, show_plots=True):
-    """
-    Plot the field/cluster redshift histogram with GMM overlays and subcluster insets.
-
-    Parameters
-    ----------
-    z : array-like
-        Redshift data for all galaxies (field or cluster region).
-    valid_gaussians : list of tuples
-        (z_low_fit, z_high_fit, mean, std, weight) for each subcluster
-    fit_info : dict or None
-        If present, overlays total GMM fit using original BIC-selected model.
-    plot_total : bool
-        If True, overlay the total GMM fit.
-    bins : int
-        Number of bins for the main histogram.
-    n_inset_max : int
-        Maximum number of insets to show (more subclusters print a warning).
-    show : bool
-        Whether to display the plot interactively.
-    save_path : str or None
-        File path to save the figure (PDF/PNG).
-    """
-    if len(z) == 0:
-        print("No data to plot.")
-        return
-
-    z = np.asarray(z)
-    fig, ax = plt.subplots(figsize=(14, 8))
-
-    # Main histogram
-    counts, bins_hist, _ = ax.hist(z, bins=bins, color='b', alpha=0.6, edgecolor='black', zorder=5)
-    bin_width = bins_hist[1] - bins_hist[0]
-    x = np.linspace(z.min(), z.max(), 1000)
-
-    # Individual Gaussians
-    inset_info = []
-    color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'][1:])  # skip C0
-    gaussian_colors = []
-    for idx, (z_low_fit, z_high_fit, mean, std, weight) in enumerate(valid_gaussians):
-        color = next(color_cycle)
-        gaussian_colors.append(color)
-        # Use local normalization for each component
-        region_mask = (z > mean - 2* std) & (z < mean + 2*std)
-        N_local = np.sum(region_mask)
-        inset_info.append({'idx': idx, 'N_local': N_local, 'mean' : mean})
-        gaussian = scipy.stats.norm.pdf(x, mean, std) * N_local * bin_width
-        ax.plot(
-            x, gaussian, linestyle='dashed', linewidth=2, color=color,zorder=7,
-            label=f"SC {idx+1}: z={mean:.3f}, $\\sigma$={std:.4f}, N={N_local}"
-        )
-
-    # Total GMM fit overlay (if desired and fit_info provided)
-    if plot_total and fit_info is not None:
-        total_gmm = np.zeros_like(x)
-        for mean, std, weight in zip(fit_info['means'], fit_info['stds'], fit_info['weights']):
-            # Scale by GMM weight and total number of galaxies (so area = N_total)
-            total_gmm += scipy.stats.norm.pdf(x, mean, std) * weight * len(z) * bin_width
-        ax.plot(x, total_gmm, color='grey', alpha=0.7, lw=2, zorder=6, label="Total GMM Fit")
-
-    ax.set_xlabel("Redshift z")
-    if z.min() < 0:
-        ax.set_xlim(0, z.max())
-    else:
-        ax.set_xlim(z.min()-0.05, z.max()+0.05)
-    ax.set_ylabel("Galaxy Counts")
-    ax.legend(fontsize=9, loc='upper left')
-    plt.tight_layout()
-
-    # Inset subcluster histograms
-    # Sort insets by number of galaxies, then mean redshift
-    n_inset = min(n_inset_max, len(valid_gaussians))
-    top_n = sorted(inset_info, key=lambda x: -x['N_local'])[:n_inset]
-    top_n_sorted = sorted(top_n, key=lambda x: x['mean'])
-    inset_indices = [item['idx'] for item in top_n_sorted]
-
-
-    inset_axes_list = []
-
-    inset_width = 0.3
-    inset_height = 0.20
-
-    inset_positions = {
-    1: [(0.65, 0.42)],                                # Lower right
-    2: [(0.65, 0.72), (0.65, 0.42)],                   # Upper right, lower right
-    3: [(0.08, 0.42), (0.65, 0.72), (0.65, 0.42)],       # UL, UR, LR (low to high z)
-    4: [(0.08, 0.42), (0.65, 0.72), (0.65, 0.42), (0.65, 0.12)], # LL, UL, UR, LR
-    }
-
-
-    positions = inset_positions.get(n_inset, [])
-
-
-    for inset_rank, i in enumerate(inset_indices):
-        z_low_fit, z_high_fit, mean, std, weight = valid_gaussians[i]
-        if z_low_fit < 0: z_low_fit = 0
-        sub_mask = (z > z_low_fit) & (z < z_high_fit)
-        z_sub = z[sub_mask]
-        if len(z_sub) == 0:
-            continue
-        if inset_rank >= len(positions):
-                continue
-        x0, y0 = positions[inset_rank]
-
-        color = gaussian_colors[i]
-        axins = fig.add_axes([x0, y0, inset_width, inset_height])
-        axins.hist(z_sub, bins=15, color=color, edgecolor='black')
-        axins.set_title(f"SC {i+1}", fontsize=9)
-        axins.set_xlabel("z", fontsize=8)
-        axins.set_ylabel("N", fontsize=8)
-        axins.tick_params(labelsize=7)
-        axins.set_xlim(z_low_fit, z_high_fit)
-        inset_axes_list.append(axins)
-
-
-        # Draw connection lines
-        inset_xlim = axins.get_xlim()
-        inset_ylim = axins.get_ylim()
-        main_ylim = ax.get_ylim()
-        con1 = ConnectionPatch((z_low_fit, main_ylim[0]), (inset_xlim[0], inset_ylim[0]),
-                               coordsA=ax.transData, coordsB=axins.transData,
-                               color=color, linewidth=0.5, zorder=0)
-        con2 = ConnectionPatch((z_high_fit, main_ylim[0]), (inset_xlim[1], inset_ylim[0]),
-                               coordsA=ax.transData, coordsB=axins.transData,
-                               color=color, linewidth=0.5, zorder=0)
-        ax.add_artist(con1)
-        ax.add_artist(con2)
-
-    if len(valid_gaussians) > n_inset_max:
-        print(f"Warning: More than {n_inset_max} subclusters; only plotting first {n_inset_max} insets.")
-
-    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="gmm_histogram.pdf")
-
-    return gaussian_colors
-
-
-def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_color='orange', with_all=False, save_path=None, save_plots=True, show_plots=True):
-    """
-    Plots stacked histograms of velocity data for each subcluster (and optionally all).
-
-    Parameters
-    ----------
-    vel_data : list of (velocities, z_mean, sigma_v) tuples per subcluster.
-    bins : int
-        Number of histogram bins (per subcluster).
-    color : list or None
-        Colors for subcluster histograms. If None, use color cycle.
-    combined_color : str
-        Color for combined histogram (if with_all=True).
-    with_all : bool
-        If True, plot a combined histogram as the last panel.
-    """
-
-    # TODO: Allow fig/ax input and return
-    # TODO: Fix spacing between plots
-
-
-    n_subclusters = len(vel_data)
-    n_panels = n_subclusters + (1 if with_all else 0)
-    fig, axes = plt.subplots(n_panels, 1, figsize=(7, 2.5 * n_panels), sharex=False)
-    if n_panels == 1:
-        axes = [axes]
-    fig.subplots_adjust(hspace=0.25)
-
-    if color is None:
-        default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        subcluster_colors = [default_colors[i % len(default_colors)] for i in range(n_subclusters)]
-    elif len(color) ==1:
-        subcluster_colors = [color] * n_subclusters
-    else:
-        subcluster_colors = color
-    textbox_props = dict(boxstyle="round,pad=0.35", fc="lightgrey", ec="0.5", alpha=0.5, linewidth=1)
-
-
-    for i, (velocities, z_mean, sigma_v) in enumerate(vel_data):
-        ax = axes[i]
-        vmin, vmax = np.min(velocities), np.max(velocities)
-
-
-        bins_local = np.linspace(vmin, vmax, bins)
-        ax.hist(velocities, bins=bins_local, color=subcluster_colors[i], edgecolor='black', density=False)
-        ax.set_title(f"SC {i+1}", loc='left', fontsize=11)
-        ax.set_xlim(vmin, vmax)
-        ax.axvline(0, color='gray', linestyle=':', linewidth=1, zorder=1)
-        # Textbox with mean and sigma
-        textstr = f"$\\bar{{z}}$ = {z_mean:.4f}\n$\\sigma_v$ = {sigma_v:.0f} km/s"
-        # Place textbox in upper right
-        ax.text(
-            0.98, 0.96, textstr,
-            transform=ax.transAxes,
-            ha='right', va='top',
-            fontsize=10,
-            bbox=textbox_props
-        )
-
-    # "All" panel
-    if with_all:
-        all_velocities = np.concatenate([v[0] for v in vel_data if len(v[0]) > 0])
-        ax_comb = axes[-1]
-        vmin, vmax = np.min(all_velocities), np.max(all_velocities)
-        bins_all = np.linspace(vmin, vmax, bins)
-        ax_comb.hist(all_velocities, bins=bins_all, color=combined_color, edgecolor='black', density=False)
-        ax_comb.set_xlabel("Velocity (km/s)")
-        ax_comb.set_title("All", loc='left', fontsize=11)
-        ax_comb.axvline(0, color='gray', linestyle=':', linewidth=1, zorder=1)
-
-    fig.supylabel("Galaxy Counts", fontsize=16)
-    fig.suptitle("Subcluster Velocity Distributions", fontsize=15)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.97])
-    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="velocity_histograms.pdf")
 
 
 def analyze_group(subclusters: list, verbose=False) -> dict:
