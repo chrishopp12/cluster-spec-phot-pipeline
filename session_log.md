@@ -213,8 +213,90 @@ Tracks all decisions, rationale, and progress. Started 2026-03-28.
 - archival_z.txt (space-delimited) no longer produced (only CSV)
 - Subcluster default radius uses arcmin but named _mpc — unit clarification needed
 - Red sequence only fits primary survey/color (not all 6 combos by default)
-- Stale FutureWarning from scipy.stats.anderson (needs method parameter for scipy 1.19+)
+- ~~Stale FutureWarning from scipy.stats.anderson~~ — suppressed (2026-03-28)
 - FutureWarning from pandas dtype incompatibility in redsequence.py
 - CMD diagnostic plots for colors without valid bands now skip cleanly
 - No automated geometry tests yet (test_geometry.py placeholder)
-- analyze_cluster legacy orchestrator still in xray.py (dead code, can be removed)
+- ~~analyze_cluster legacy orchestrator still in xray.py~~ — deleted (2026-03-28)
+
+---
+
+## 2026-03-28 — Systematic Cleanup Session
+
+### Motivation
+Quality dropped on the back half of the v2 refactor (plotting, io, utils, statistics modules).
+Code ran correctly but had excessive debug prints, hardcoded values, dead code, inconsistent
+patterns, and missing module headers. Goal: simplify and standardize without changing analysis
+functionality.
+
+### Changes (7 commits on v2-refactor)
+
+#### Dead Code Removal
+- Deleted 773 lines from `pipelines/xray.py`: `analyze_cluster()` legacy orchestrator,
+  full argparse CLI (`build_parser`, `main`, 8 helper functions, 13 redundant constants)
+- Deleted `load_bcg_catalog()` from `io/catalogs.py` (self-marked obsolete)
+- Deleted `get_skycoord()` from `utils/coordinates.py` (migrated 3 call sites to `skycoord_from_df`)
+- Deleted `make_directories()` and `read_json()` from `utils/__init__.py` (zero callers)
+- Removed ~55 lines of commented-out code (xray/analysis.py, statistics.py, plotting/subclusters.py)
+- Deleted root-level v1 shim files (cluster.py, run_spec_phot_pipeline.py, run_xray_pipeline.py, xray_pipeline/)
+- Deleted macOS Finder duplicate files (subclusters 2.py, xray 2.py)
+
+#### CLI Flags
+- Added `--verbose / --no-verbose` (default: True) — gates all progress detail
+- Added `--diagnostics / --no-diagnostics` (default: True) — gates CMD diagnostic plots
+- Threaded `verbose` through: cli.py → run_subcluster_analysis → assign_subcluster_regions,
+  filter_members_by_config; cli.py → run_xray_imaging → process_redshifts → fit_gaussian_model,
+  make_stats_table, get_velocities
+- Pipeline output: ~300 lines → ~30 lines with `--no-verbose`
+
+#### Print Noise Cleanup
+- Deleted ~20 noise prints from plotting modules: "Plotting X-ray image with WCS..." (×35),
+  "Overlaying optical image..." (×18), contour level array dumps (×20), data structure repr dumps
+- Gated GMM BIC details, stats table boxes, per-subcluster summaries behind `verbose`
+- Removed geometry midpoint/signature debug prints entirely (development-only, never useful)
+- Fixed duplicate "Wrote BCGs.csv" message
+- Removed raw LaTeX row printed to stdout from io/tables.py
+
+#### Constants Centralization
+- Added to `constants.py`: DEFAULT_MAG_MIN (16.0), DEFAULT_COLOR_BAND (0.15),
+  DEFAULT_GMM_MAX_COMPONENTS (8), DEFAULT_GMM_MIN_GALAXIES (8),
+  DEFAULT_GMM_BROAD_THRESHOLD (0.05), DEFAULT_IMAGE_PIXELS (802, 800)
+- Wired existing constants into hardcoded sites:
+  - DEFAULT_XRAY_FILENAME → 7 sites in plotting/xray.py
+  - DEFAULT_PSF_ARCSEC → plotting/xray.py, plotting/optical.py
+  - DEFAULT_BANDWIDTH → plotting/cmd.py, plotting/optical.py
+  - DEFAULT_CONTOUR_LEVELS → plotting/optical.py
+- Fixed GMM broad_threshold docstring (said 0.04, actual default is 0.05)
+
+#### Structural Decomposition
+- `build_subcluster_summary()` ("dumpster fire"): lifted 3 nested helpers to module level,
+  moved LaTeX deluxetable generation to `io/tables.py` as `export_subcluster_summary_table()`
+- Moved `plot_gmm_histogram()` and `plot_stacked_velocity_histograms()` from
+  `subclusters/statistics.py` to `plotting/subclusters.py` (enforces analysis/plotting separation)
+- `statistics.py`: 996 → 741 lines
+- `pipelines/xray.py`: 1126 → 353 lines
+- Replaced spec_phot.py unwired plotting TODO with comment (CLI handles plotting)
+
+#### Correctness Fixes
+- Fixed `utils/cosmology.py` docstring: said "Mpc", code returns kpc (callers expect kpc)
+- Fixed `io/images.py` docstring: stale parameter names (folder → cluster) and wrong units (degrees → arcmin)
+- Added `type(e).__name__` to all 25 `except Exception` error messages across 7 files
+- Suppressed scipy FutureWarning from `anderson()` (code needs both old and new API simultaneously)
+- Standardized f-string path construction to `os.path.join()` in io/images.py
+
+#### Module Headers
+- Added full reference-style headers (matching catalog/photometry.py) to 10 modules:
+  plotting/xray.py, optical.py, common.py, arcs.py; io/images.py, catalogs.py;
+  utils/__init__.py, coordinates.py, cosmology.py, resolvers.py
+
+### Summary
+- 7 commits, 24 files changed, ~650 net lines removed
+- 39 tests passing throughout
+- Pipeline runs end-to-end on RMJ 1327 test cluster with clean output
+
+### Remaining TODO
+- Function-level docstring pass (NumPy-style on all public functions)
+- plotting/subclusters.py header needs data products section
+- Test coverage: geometry tests, statistics unit tests, pipeline integration tests
+- Two separate redshift analysis paths (process_redshifts vs analyze_group) are correctly
+  separate but could share normality test infrastructure in a future session
