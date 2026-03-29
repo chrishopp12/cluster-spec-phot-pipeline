@@ -364,8 +364,6 @@ def classify_segments(segments, bisectors, bcg_signatures, verbose=False):
 
             # Build signature for midpoint: for its own bisector, set to 0
             segment_sig = build_point_signature(segment_midpoint, bisectors, exclude_pair=pair)
-            if verbose:
-                print(f"Midpoint {mx:.2f},{my:.2f}: signature {segment_sig}")
 
             # Compare midpoint signature to each BCG's signature
             for bcg_idx, bcg_sig in bcg_signatures.items():
@@ -373,9 +371,6 @@ def classify_segments(segments, bisectors, bcg_signatures, verbose=False):
                     continue
                 segment_sig = np.array(segment_sig)
                 bcg_sig = np.array(bcg_sig)
-                # Mask: both nonzero (both BCG and point are defined with respect to this bisector)
-                if verbose:
-                    print(f"  Comparing to BCG {bcg_idx} with signature {bcg_sig} to segment signature {segment_sig}")
                 mask = (bcg_sig != 0) & (segment_sig != 0)
                 if np.all(segment_sig[mask] == bcg_sig[mask]):
                     regions[bcg_idx].append(((x1, y1), (x2, y2)))
