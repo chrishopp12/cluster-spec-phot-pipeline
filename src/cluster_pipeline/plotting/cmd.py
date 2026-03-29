@@ -639,6 +639,19 @@ def run_cluster_plots(
     phot_df = pd.read_csv(phot_file)
     matched_df = pd.read_csv(matched_file)
 
+    # Check that required magnitude bands have valid data
+    color_key = color_type.replace(" ", "").replace("-", "")
+    required_mags = {
+        "gr": ["gmag", "rmag"],
+        "ri": ["rmag", "imag"],
+        "gi": ["gmag", "imag"],
+    }.get(color_key, ["gmag", "rmag"])
+
+    for mag_col in required_mags:
+        if mag_col not in matched_df.columns or not matched_df[mag_col].notna().any():
+            print(f"  No valid {mag_col} data in {survey} — skipping {color_type} plots")
+            return
+
     # Member catalog (deduplicated, has z column + member_type)
     members_file = os.path.join(cluster.members_path, "cluster_members.csv")
     if not os.path.isfile(members_file):
@@ -651,16 +664,9 @@ def run_cluster_plots(
         return
     redseq_df = pd.read_csv(members_file)
 
-    # Luminosity weight — must match the color's magnitude band
-    color_key = color_type.replace(" ", "").replace("-", "")
-    if color_key == "gr":
-        lum_weight = "lum_weight_r"
-    elif color_key in ("ri", "gi"):
-        if "lum_weight_i" in redseq_df.columns and redseq_df["lum_weight_i"].notna().any():
-            lum_weight = "lum_weight_i"
-        else:
-            print(f"  No i-band data available — skipping {survey} {color_type} plots")
-            return
+    # Luminosity weight — use the band matching the magnitude axis
+    if color_key in ("ri", "gi"):
+        lum_weight = "lum_weight_i" if "lum_weight_i" in redseq_df.columns else "lum_weight_r"
     else:
         lum_weight = "lum_weight_r"
 
