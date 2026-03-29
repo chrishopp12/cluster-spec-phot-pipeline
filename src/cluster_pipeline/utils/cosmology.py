@@ -37,7 +37,7 @@ def redshift_to_proper_distance(z: float | np.ndarray) -> float | np.ndarray:
     Returns
     -------
     D_A : float | np.ndarray
-        Proper distances in Mpc
+        Angular diameter distances in kpc.
     """
 
-    return COSMO.angular_diameter_distance(z).to(u.kpc).value  # Convert to kpc
+    return COSMO.angular_diameter_distance(z).to(u.kpc).value

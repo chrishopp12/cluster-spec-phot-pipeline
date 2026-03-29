@@ -3,7 +3,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pandas as pd
 import numpy as np
@@ -93,50 +93,6 @@ def load_dataframes(
 
     return spec_df, member_df, bcg_df
 
-
-def load_bcg_catalog(cluster: "Cluster") -> dict[int, dict[str, Any]]:
-    """
-    Load BCGs.csv and return a dict keyed by bcg_id.
-
-    Parameters
-    ----------
-    bcg_csv_path : str
-        Path to 'BCGs.csv' (per-cluster file).
-
-    Returns
-    -------
-    bcgs : dict
-        bcgs[bcg_id] = {
-            'bcg_id': int,
-            'z': float,
-            'z_err': float or None,
-            'label': str or '',
-        }
-    """
-
-    # TODO: This function is obsolete and should be deleted.
-
-    df = pd.read_csv(cluster.bcg_file)
-    if "bcg_id" not in df.columns or "z" not in df.columns:
-        raise ValueError("BCGs.csv must have at least columns: 'bcg_id', 'z'.")
-
-    if "z_err" not in df.columns:
-        df["z_err"] = pd.Series([None] * len(df))
-    if "label" not in df.columns:
-        df["label"] = pd.Series([""] * len(df))
-
-    bcgs: dict[int, dict[str, Any]] = {}
-    for _, r in df.iterrows():
-        bid = int(r["bcg_id"])
-        z = float(r["z"])
-        z_err = None if (pd.isna(r["z_err"])) else float(r["z_err"])
-        bcgs[bid] = {
-            "bcg_id": bid,
-            "z": z,
-            "z_err": z_err,
-            "label": str(r.get("label", "")),
-        }
-    return bcgs
 
 
 def read_bcg_csv(

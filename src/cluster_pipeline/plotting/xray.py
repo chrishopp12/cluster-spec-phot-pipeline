@@ -149,14 +149,12 @@ def plot_xray(
 
     # Optical background first
     if optical_data is not None:
-        print("Overlaying optical image...")
         ax.imshow(optical_data, origin='lower', alpha=0.3)
         ax.set_xlim(ax.get_xlim())
         ax.set_ylim(ax.get_ylim())
 
     # Main X-ray image
     if wcs_xray is not None:
-        print("Plotting X-ray image with WCS...")
         ax.imshow(
             xray_data,
             origin='lower',
@@ -166,7 +164,6 @@ def plot_xray(
             vmax=np.percentile(xray_data, 99.95)
         )
     else:
-        print("Plotting X-ray image without WCS...")
         ax.imshow(
             xray_data,
             origin='lower',
@@ -452,11 +449,8 @@ def plot_redshift_overlay(
     ra = df_spec['RA'].values
     dec = df_spec['Dec'].values
     z = df_spec['z'].values
-    print(f"Total number of galaxies with redshifts: {len(z)}")
-
     # -- Select cluster members --
     mask_members = (z > z_low) & (z < z_high)
-    print(f"Number of cluster members (z between {z_low:.3f} and {z_high:.3f}): {np.sum(mask_members)}")
 
     # -- Namespaced scatter kwargs
     scatter_kwargs = pop_prefixed_kwargs(kwargs, 'scatter')

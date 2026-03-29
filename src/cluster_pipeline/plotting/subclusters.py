@@ -172,31 +172,6 @@ def plot_subcluster_members_and_regions(
                         edgecolors=color, facecolors=color, linewidths=1.2, zorder=11,
                         transform=ax.get_transform('icrs'))
 
-    # spec_df = pd.read_csv(cluster.spec_file)
-    # # Ensure numeric dtypes (coerce bad entries to NaN so they won't match)
-    # for col in ["RA", "Dec", "z"]:
-    #     spec_df[col] = pd.to_numeric(spec_df[col], errors="coerce")
-
-    # mask_1 = spec_df["z"].between(0.480, 0.495, inclusive="both")
-    # mask_2 = spec_df["z"].between(0.493, 0.510, inclusive="both")
-
-    # print("mask_1 counts:", mask_1.sum(), "mask_2 counts:", mask_2.sum())
-
-    # ax.scatter(spec_df.loc[mask_1, 'RA'], spec_df.loc[mask_1, 'Dec'], s=18,
-    #                      edgecolors='tab:orange', facecolors='tab:orange', linewidths=1.2, zorder=11,
-    #                      transform=ax.get_transform('icrs'))
-    # ax.scatter(spec_df.loc[mask_2, 'RA'], spec_df.loc[mask_2, 'Dec'], s=10,
-    #                      edgecolors='tab:green', facecolors='tab:green', linewidths=1.2, zorder=12,
-    #                      transform=ax.get_transform('icrs'))
-    # ax.scatter(spec_df["RA"], spec_df["Dec"], s=8,
-    #                      edgecolors='lightgray', facecolors='none', linewidths=0.8, zorder=12,
-    #                      transform=ax.get_transform('icrs'))
-
-    # RA_phot, Dec_phot, Lum_phot = load_photo_coords(cluster.phot_file())
-    # ax.scatter(RA_phot, Dec_phot, s=12, marker='x',
-    #                      edgecolors='red', facecolors='red', linewidths=1.2, zorder=11,
-    #                      transform=ax.get_transform('icrs'))
-
     # Subcluster region arcs
     bisectors = get_bisectors(subclusters)
     bcg_signatures = build_bcg_signatures(subclusters, bisectors)
@@ -465,8 +440,6 @@ def plot_stacked_redshift_histograms(
     z_subset = z[mask].reshape(-1, 1)
     z_inset_mask = (z > cluster_low) & (z < cluster_high)
     z_inset = z[z_inset_mask]
-    print(f"Total galaxies in cluster range ({cluster_low:.3f} to {cluster_high:.3f}): {len(z_inset)}")
-
     # Format figure
     n_subclusters = len(z_data)
     all_z = np.concatenate(z_data)
@@ -723,9 +696,6 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
     z_subset = z[mask].reshape(-1, 1)
     z_inset_mask = (z > cluster_low) & (z < cluster_high)
     z_inset = z[z_inset_mask]
-    print(f"Total galaxies in cluster range ({cluster_low:.3f} to {cluster_high:.3f}): {len(z_inset)}")
-
-
     # Colormap for inset histogram
     cmap = plt.get_cmap(cmap)
 
@@ -1258,12 +1228,9 @@ def plot_subcluster_regions_and_histograms(
     if combined_configs is not None:
         colors = [sub.color for sub in combined_configs]
         z_group = spec_groups_combined
-        print("Using combined subcluster configurations for colors and data.")
     else:
         colors = [sub.color for sub in subclusters]
         z_group = spec_groups
-
-    print(f"Colors: {colors}")
 
 
 
@@ -1288,8 +1255,6 @@ def plot_subcluster_regions_and_histograms(
 
 
     n_subclusters = len(z_data)
-    print(f"Number of subclusters: {n_subclusters}")
-    print(f"Subclusters: {subclusters}")
     hist_bins = np.linspace(min(np.concatenate(z_data)), max(np.concatenate(z_data)), 24)
     y_max_list = [np.histogram(zs, bins=hist_bins)[0].max() for zs in z_data]
     y_max_list = [2 if val == 1 else val for val in y_max_list]

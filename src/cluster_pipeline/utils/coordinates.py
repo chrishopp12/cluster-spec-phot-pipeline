@@ -61,24 +61,6 @@ def skycoord_from_df(
     return make_skycoord(df[ra_col].values, df[dec_col].values)
 
 
-def get_skycoord(df: pd.DataFrame) -> SkyCoord:
-    """
-    Convert DataFrame with RA/Dec columns to SkyCoord object.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame containing 'RA' and 'Dec' columns in degrees.
-
-    Returns
-    -------
-    coords : SkyCoord
-        SkyCoord object with the coordinates from the DataFrame.
-    """
-
-    # TODO: This function can be deleted and switched to skycoord_from_df() for consistency, but keeping it for now since it's used in some places and is more concise.
-    return SkyCoord(ra=df["RA"].values * u.deg, dec=df["Dec"].values * u.deg)
-
 
 def angular_sep(
         ra1: float,

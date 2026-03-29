@@ -318,5 +318,4 @@ def export_cluster_summary_row(cluster: Cluster) -> str:
         f"\\textbf{{{cluster.name}}} & {z:.4f} & {z_err:.4f} & "
         f"{rich:.2f} & {rich_err:.2f} & {ra:.4f} & {dec:.4f} \\\\ \\hline"
     )
-    print(row)
     return row

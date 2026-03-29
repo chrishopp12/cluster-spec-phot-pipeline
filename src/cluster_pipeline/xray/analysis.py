@@ -266,28 +266,6 @@ def gaussian_grad_magnitude(
 
 
 
-    # ny, nx = xray_data.shape
-    # # ny, nx = xray_smoothed.shape
-    # dec_cut_deg = float(p1[1])
-
-    # # Pixel row for that Dec
-    # # ra_mid = wcs_optical.pixel_to_world(nx/2, ny/2).ra.deg
-    # # _, y0 = wcs_optical.world_to_pixel(SkyCoord(ra_mid * u.deg, dec_cut_deg * u.deg))
-
-    # ra_mid = wcs_xray.pixel_to_world(nx/2, ny/2).ra.deg
-    # _, y0 = wcs_xray.world_to_pixel(SkyCoord(ra_mid * u.deg, dec_cut_deg * u.deg))
-
-    # # Left/right pixel endpoints across the whole field
-    # p_left  = (0, y0)
-    # p_right = (nx - 1, y0)
-
-    # # Profile along the full width at that Dec
-    # s_h, sb_h, xh, yh = profile_between_points(
-    #     image2d=xray_data, wcs=wcs_xray,
-    #     p1=p_left, p2=p_right,
-    #     n_samples=nx, width_pix=1, aggregate="mean",
-    # )
-
     bg = "#0e0e0e8b"
     fig = plt.figure(figsize=(7, 12))
     gs = fig.add_gridspec(4, 1, height_ratios=[0.25, 1, 1, 1], hspace=0.04)

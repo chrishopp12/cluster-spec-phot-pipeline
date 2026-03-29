@@ -47,13 +47,12 @@ from itertools import cycle
 import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
-from cluster_pipeline.io.catalogs import load_bcg_catalog
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.subcluster import Subcluster
 
 
-def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05):
+def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05, verbose=True):
     """
     Fit a Gaussian Mixture Model (GMM) to 1D redshift data, selecting the optimal
     number of components using BIC and filtering out broad or sparse components.
@@ -90,7 +89,8 @@ def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05
     z_low, z_high = z_subset.min(), z_subset.max()
 
     z_subset_reshape = z_subset.reshape(-1, 1)
-    print(f"Fitting max {max_components} component GMM to {len(z_subset)} galaxies in range ({z_low}, {z_high})")
+    if verbose:
+        print(f"Fitting max {max_components} component GMM to {len(z_subset)} galaxies in range ({z_low}, {z_high})")
 
     # Fit GMM with BIC selection
     bics = []
@@ -100,10 +100,12 @@ def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05
         gmm.fit(z_subset_reshape)
         bics.append(gmm.bic(z_subset_reshape))
         models.append(gmm)
-        print(f"  - BIC(n={n}): {bics[-1]:.2f}")
+        if verbose:
+            print(f"  - BIC(n={n}): {bics[-1]:.2f}")
 
     best_idx = np.argmin(bics)
-    print(f"  -> Best model: n={best_idx+1} with BIC={bics[best_idx]:.2f}")
+    if verbose:
+        print(f"  -> Best model: n={best_idx+1} with BIC={bics[best_idx]:.2f}")
     best_model = models[best_idx]
     best_n = best_model.n_components
     print(f"Selected {best_n} components (min BIC at n={best_n})")
@@ -123,11 +125,12 @@ def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05
     for i, (mean, std, weight) in enumerate(zip(means, stds, weights)):
         z_low_fit, z_high_fit = mean - 3 * std, mean + 3 * std
         N_local = np.sum((z_subset > mean - std) & (z_subset < mean + std))
-        msg = (
-            f"  - Gaussian {i+1}: mean={mean:.5f}, std={std:.5f}, weight={weight:.3f}, N={N_local}"
-            f"{' [filtered]' if (std >= broad_threshold or N_local < min_galaxies) else ''}"
-        )
-        print(msg)
+        if verbose:
+            msg = (
+                f"  - Gaussian {i+1}: mean={mean:.5f}, std={std:.5f}, weight={weight:.3f}, N={N_local}"
+                f"{' [filtered]' if (std >= broad_threshold or N_local < min_galaxies) else ''}"
+            )
+            print(msg)
         if std < broad_threshold and N_local >= min_galaxies:
             valid_gaussians.append((z_low_fit, z_high_fit, mean, std, weight))
 
@@ -155,6 +158,7 @@ def make_stats_table(
     save_plots=True,
     show_plots=True,
     save_path=None,
+    verbose=False,
 ):
     """
     Computes and plots statistics for each subcluster defined by Gaussian fits, including
@@ -186,28 +190,8 @@ def make_stats_table(
         except Exception:
             pass
 
-        # # Fallback: SciPy AD stat + piecewise p-value approximation
-        # anderson_res = scipy.stats.anderson(z_subset, dist="norm")
-        # ad2 = float(anderson_res.statistic)
-
-        # # Adjusted statistic for estimated parameters (common correction)
-        # n = float(n)
-        # ad2_star = ad2 * (1.0 + 0.75 / n + 2.25 / (n * n))
-
-        # # Piecewise approximation
-        # if ad2_star < 0.2:
-        #     p = 1.0 - np.exp(-13.436 + 101.14 * ad2_star - 223.73 * (ad2_star ** 2))
-        # elif ad2_star < 0.34:
-        #     p = 1.0 - np.exp(-8.318 + 42.796 * ad2_star - 59.938 * (ad2_star ** 2))
-        # elif ad2_star < 0.6:
-        #     p = np.exp(0.9177 - 4.279 * ad2_star - 1.38 * (ad2_star ** 2))
-        # elif ad2_star < 10:
-        #     p = np.exp(1.2937 - 5.709 * ad2_star + 0.0186 * (ad2_star ** 2))
-        # else:
-        #     p = 0.0
-
-        # p = float(np.clip(p, 0.0, 1.0))
-        p = 10.0  # Dummy value to indicate failure
+        # statsmodels not available — return dummy p-value
+        p = 10.0
         return ad2, p
 
     stats_list = []
@@ -245,7 +229,10 @@ def make_stats_table(
         ad_stat, ad_p_value = _ad_pvalue_normality(z_subset)
 
         if N >= 3:
-            anderson_res = scipy.stats.anderson(z_subset, dist="norm")
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                anderson_res = scipy.stats.anderson(z_subset, dist="norm")
             sig_levels = anderson_res.significance_level
             crit_values = anderson_res.critical_values
 
@@ -292,17 +279,18 @@ def make_stats_table(
             "Anderson Level": ad_significance,
         })
 
-        print("")
-        print(f"-------------- Stats Summary: Subcluster {i+1} --------------")
-        print(f"          KS Test Statistic: {ks_statistic}")
-        print(f"                 KS p-value: {ks_p_value}")
-        print(f" Anderson-Darling Statistic: {ad_stat}")
-        print(f"        Anderson-Darling p : {ad_p_value}")
-        print(f"        Anderson-Darling p (interpolated): {ad_p_value2}")
-        print(f"            Critical Values: {crit_values}")
-        print(f"        Significance Levels: {sig_levels}")
-        print("---------------------------------------------------------------")
-        print("")
+        if verbose:
+            print("")
+            print(f"-------------- Stats Summary: Subcluster {i+1} --------------")
+            print(f"          KS Test Statistic: {ks_statistic}")
+            print(f"                 KS p-value: {ks_p_value}")
+            print(f" Anderson-Darling Statistic: {ad_stat}")
+            print(f"        Anderson-Darling p : {ad_p_value}")
+            print(f"        Anderson-Darling p (interpolated): {ad_p_value2}")
+            print(f"            Critical Values: {crit_values}")
+            print(f"        Significance Levels: {sig_levels}")
+            print("---------------------------------------------------------------")
+            print("")
 
         if make_plots:
             fig, axes = plt.subplots(1, 2, figsize=(14, 7))
@@ -362,7 +350,8 @@ def make_stats_table(
     ]
     stats_table = Table(rows=stats_list, names=col_names)
 
-    print(stats_table)
+    if verbose:
+        print(stats_table)
     return stats_table, stats_values
 
 
@@ -372,7 +361,7 @@ def velocity_dispersion(zs):
     return z_mean, np.sqrt(biweight_midvariance(vels)), vels
 
 
-def get_velocities(gaussians, z):
+def get_velocities(gaussians, z, verbose=False):
     # Analyze each spectroscopic group
     vel_data = []
     z_data = []
@@ -381,12 +370,13 @@ def get_velocities(gaussians, z):
         z_mean, sigma_v, velocities = velocity_dispersion(z_vals)
         vel_data.append((velocities, z_mean, sigma_v))
         z_data.append(z_vals)
-        print(f"Subcluster {i+1}: N={len(z_vals)} | z\u0304 = {z_mean:.5f} | \u03c3_v = {sigma_v:.1f} km/s")
+        if verbose:
+            print(f"Subcluster {i+1}: N={len(z_vals)} | z\u0304 = {z_mean:.5f} | \u03c3_v = {sigma_v:.1f} km/s")
 
     return vel_data, z_data
 
 
-def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, output_folder=None, max_components=None, save_plots=True, show_plots=True):
+def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, output_folder=None, max_components=None, save_plots=True, show_plots=True, verbose=True):
 
 
     # -- Load Redshift Data --
@@ -407,14 +397,18 @@ def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, o
         kwargs['max_components'] = max_components
 
     # -- Fit Gaussians for entire range --
-    print(f"Fitting Gaussians in field range ({z_min_field}, {z_max_field})")
-    gaussians_field, fit_info_field = fit_gaussian_model(z_field, broad_threshold=0.05, **kwargs)
-    print(f"Identified {len(gaussians_field)} clusters.")
+    if verbose:
+        print(f"Fitting Gaussians in field range ({z_min_field}, {z_max_field})")
+    gaussians_field, fit_info_field = fit_gaussian_model(z_field, broad_threshold=0.05, verbose=verbose, **kwargs)
+    if verbose:
+        print(f"Identified {len(gaussians_field)} clusters.")
 
     # -- Fit Gaussians for cluster only--
-    print(f"Fitting Gaussians in cluster range ({cluster.z_min}, {cluster.z_max})")
-    gaussians, fit_info = fit_gaussian_model(z_cluster, broad_threshold=0.02, max_components=2, min_galaxies = 4, **kwargs)
-    print(f"Identified {len(gaussians)} subclusters.")
+    if verbose:
+        print(f"Fitting Gaussians in cluster range ({cluster.z_min}, {cluster.z_max})")
+    gaussians, fit_info = fit_gaussian_model(z_cluster, broad_threshold=0.02, max_components=2, min_galaxies = 4, verbose=verbose, **kwargs)
+    if verbose:
+        print(f"Identified {len(gaussians)} subclusters.")
 
 
     # -- Output subcluster stats --
@@ -424,8 +418,8 @@ def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, o
     image_folder = os.path.join(output_folder, "Images")
     os.makedirs(image_folder, exist_ok=True)
 
-    stats_table_field, _ = make_stats_table(z_field, gaussians_field, prefix="field", make_plots=True, save_plots=save_plots, show_plots=show_plots, save_path=image_folder)
-    stats_table_cluster, _  = make_stats_table(z_cluster, gaussians, prefix="cluster", make_plots=True, save_plots=save_plots, show_plots=show_plots, save_path=image_folder)
+    stats_table_field, _ = make_stats_table(z_field, gaussians_field, prefix="field", make_plots=True, save_plots=save_plots, show_plots=show_plots, save_path=image_folder, verbose=verbose)
+    stats_table_cluster, _  = make_stats_table(z_cluster, gaussians, prefix="cluster", make_plots=True, save_plots=save_plots, show_plots=show_plots, save_path=image_folder, verbose=verbose)
 
     stats_path_field = os.path.join(output_folder, "subcluster_stats_field.csv")
     stats_table_field.write(stats_path_field, format="csv", overwrite=True)
@@ -666,13 +660,15 @@ def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_col
     finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="velocity_histograms.pdf")
 
 
-def analyze_group(subclusters: list) -> dict:
+def analyze_group(subclusters: list, verbose=False) -> dict:
     """Compute velocity dispersion for each subcluster's spectroscopic members.
 
     Parameters
     ----------
     subclusters : list[Subcluster]
         Subclusters with .spec_members populated.
+    verbose : bool, optional
+        If True, print per-subcluster stats. [default: False]
 
     Returns
     -------
@@ -693,10 +689,11 @@ def analyze_group(subclusters: list) -> dict:
             "velocities": velocities,
             "z_vals": z_vals,
         }
-        print(
-            f"Subcluster {sub.label}: N={len(z_vals)} | "
-            f"$\\bar{{z}}$ = {z_mean:.5f} | $\\sigma_v$ = {sigma_v:.1f} km/s"
-        )
+        if verbose:
+            print(
+                f"Subcluster {sub.label}: N={len(z_vals)} | "
+                f"$\\bar{{z}}$ = {z_mean:.5f} | $\\sigma_v$ = {sigma_v:.1f} km/s"
+            )
     return results
 
 

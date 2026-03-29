@@ -21,29 +21,30 @@ def get_optical_image(
         dec_offset: float = 0.0,
         check_validity: bool = True
     ) -> str | None:
-    """Retrieves optical images from specified surveys (Legacy, PanSTAARS, more to come) and saves them as FITS files.
+    """Retrieve an optical image from HiPS surveys and save as FITS.
+
+    Queries PanSTARRS DR1 and Legacy DR10 in priority order. The first
+    survey to return a valid (mostly non-empty) image wins. Results are
+    cached: if the FITS file already exists and is valid, it is returned
+    immediately.
 
     Parameters
     ----------
-    folder : str
-        Path to the folder where the FITS file will be saved.
-    cluster_coords : SkyCoord
-        Astropy SkyCoord object with the cluster coordinates.
+    cluster : Cluster
+        Cluster object providing coordinates and ``photometry_path``.
     fov : float
-        Field of view in degrees for the image.
+        Field of view in arcminutes (converted to degrees internally).
     ra_offset : float, optional
-        Offset in degrees to apply to the Right Ascension of the cluster coordinates (default is 0).
+        RA offset in arcminutes (default 0).
     dec_offset : float, optional
-        Offset in degrees to apply to the Declination of the cluster coordinates (default is 0).
+        Dec offset in arcminutes (default 0).
     check_validity : bool, optional
-        If True, checks if the retrieved FITS file is valid (default is True).
+        If True, reject images that are mostly empty (default True).
 
     Returns
-    ---------
-    fits_path : str
-        Path to the saved FITS file containing the optical image.
-    None
-        If no valid image is retrieved from the surveys.
+    -------
+    str or None
+        Path to the saved FITS file, or None if no valid image was found.
     """
     ra_offset_deg = ra_offset/ 60
     dec_offset_deg = dec_offset/ 60

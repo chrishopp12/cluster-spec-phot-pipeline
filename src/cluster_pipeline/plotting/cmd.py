@@ -32,7 +32,7 @@ from astropy.wcs import WCS
 from scipy.stats import gaussian_kde
 
 from cluster_pipeline.utils import get_color_mag_functions, split_members_by_spec
-from cluster_pipeline.utils.coordinates import get_skycoord
+from cluster_pipeline.utils.coordinates import skycoord_from_df
 from cluster_pipeline.io.catalogs import get_redseq_filename
 from cluster_pipeline.plotting.common import finalize_figure
 
@@ -268,14 +268,14 @@ def plot_spatial(
     """
     spec_member_df, phot_member_df = split_members_by_spec(member_df)
 
-    spec_member_coords = get_skycoord(spec_member_df)
-    phot_member_coords = get_skycoord(phot_member_df)
+    spec_member_coords = skycoord_from_df(spec_member_df)
+    phot_member_coords = skycoord_from_df(phot_member_df)
 
     if phot_df is None:
         phot_coords = phot_member_coords
         phot_color = "lightgray"
     else:
-        phot_coords = get_skycoord(phot_df)
+        phot_coords = skycoord_from_df(phot_df)
         phot_color = "crimson"
 
     # Coordinate extent for WCS

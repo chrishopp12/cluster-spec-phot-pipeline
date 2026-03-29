@@ -128,7 +128,6 @@ def add_xray_contours(
     xray_levels = define_contours_fov( xray_smoothed, optical_data, wcs_optical, wcs_xray, contour_levels)
 
     # Plot contours
-    print("X-ray contour levels:", xray_levels)
     contour_artist = ax.contour(
         xray_smoothed,
         transform=ax.get_transform(wcs_xray),

@@ -139,10 +139,11 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
     if verbose:
         print(f"  Number of BCGs: {len(centers)}")
         print(f"  Number of bisectors: {len(bisectors)}")
-        print(f"  BCG Regions are {bcg_regions}")
+        for idx, segs in bcg_regions.items():
+            print(f"  BCG {idx}: {len(segs)} bounding segments")
     return bcg_regions
 
-def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
+def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False, verbose=False):
     """
     Assign galaxies to subclusters based on bisector geometry, radial cut, and (optional) redshift bounds.
 
@@ -194,7 +195,8 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
         matches = np.all(galaxy_signatures[:, mask] == bcg_sig[mask], axis=1)
         region_ids[matches] = region_id
 
-        print(f"Assigned {np.sum(matches)} galaxies to region {region_id}")
+        if verbose:
+            print(f"Assigned {np.sum(matches)} galaxies to region {region_id}")
 
     # Diagnostic plot: galaxies colored by region assignment
     if plot:
@@ -239,7 +241,7 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False):
         region_list.append(df_valid[region_ids == i].copy())
     return region_list, bisectors
 
-def filter_members_by_config(member_groups, subclusters, spec=True):
+def filter_members_by_config(member_groups, subclusters, spec=True, verbose=False):
     """
     Apply per-subcluster radius and (optionally) redshift cuts after region assignment.
 
@@ -271,22 +273,24 @@ def filter_members_by_config(member_groups, subclusters, spec=True):
         sep = coords.separation(centers[i]).arcmin
 
         if spec and 'z' in df.columns:
-            print("\n------------------------------------------------------")
-            print(f"Filtering Region {i+1} Spectroscopic Members")
-            print(f"  Redshift range: {zmin:.4f} - {zmax:.4f}")
-            print(f"      Radial cut: {max_radius} arcmin")
+            if verbose:
+                print("\n------------------------------------------------------")
+                print(f"Filtering Region {i+1} Spectroscopic Members")
+                print(f"  Redshift range: {zmin:.4f} - {zmax:.4f}")
+                print(f"      Radial cut: {max_radius} arcmin")
             z = df['z'].values
             has_z = np.isfinite(z)
             in_z = has_z & (z >= zmin) & (z <= zmax)
             keep = (sep < max_radius) & (in_z | ~has_z)
         else:
-            print("\n------------------------------------------------------")
-            print(f"Filtering Region {i+1} Photometric Members")
-            print(f"      Radial cut: {max_radius} arcmin")
+            if verbose:
+                print("\n------------------------------------------------------")
+                print(f"Filtering Region {i+1} Photometric Members")
+                print(f"      Radial cut: {max_radius} arcmin")
             keep = sep < max_radius
 
-
-        print(f"        Region {i+1}: {keep.sum()} of {len(df)} members kept after radius/z cut")
+        if verbose:
+            print(f"        Region {i+1}: {keep.sum()} of {len(df)} members kept after radius/z cut")
 
         filtered.append(df[keep].copy())
 
