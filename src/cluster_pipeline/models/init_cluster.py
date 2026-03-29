@@ -114,7 +114,7 @@ def cluster_init(
                 print(f"  [query] coords: {values.get('ra')}, {values.get('dec')}")
         except Exception as e:
             if verbose:
-                print(f"  [query] coords lookup failed: {e}")
+                print(f"  [query] coords lookup failed ({type(e).__name__}): {e}")
 
     if "redshift" not in values:
         try:
@@ -124,7 +124,7 @@ def cluster_init(
                 print(f"  [query] redshift: {values['redshift']}")
         except Exception as e:
             if verbose:
-                print(f"  [query] redshift lookup failed: {e}")
+                print(f"  [query] redshift lookup failed ({type(e).__name__}): {e}")
 
     # --- Source 5: Defaults (analysis parameters only) ---
     _apply_defaults(values)

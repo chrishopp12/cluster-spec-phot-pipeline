@@ -191,7 +191,7 @@ def query_panstarrs(
             catalog=PANSTARRS_CATALOG,
         )
     except Exception as e:
-        print(f"  PanSTARRS query failed: {e}")
+        print(f"  PanSTARRS query failed ({type(e).__name__}): {e}")
         return pd.DataFrame(columns=COLUMNS)
 
     if not result:
@@ -259,7 +259,7 @@ def query_legacy(
             job = tap.launch_job(query)
             chunk = job.get_results().to_pandas()
         except Exception as e:
-            print(f"  Legacy query failed at offset {offset}: {e}")
+            print(f"  Legacy query failed at offset {offset} ({type(e).__name__}): {e}")
             break
 
         if chunk.empty:

@@ -198,7 +198,7 @@ def run_subcluster_analysis(
             build_subcluster_summary(cluster, subclusters)
             print("    Subcluster summary table: OK")
         except Exception as e:
-            print(f"    Subcluster summary table FAILED: {e}")
+            print(f"    Subcluster summary table FAILED ({type(e).__name__}): {e}")
 
         # Build combined groups (default: each subcluster is its own group)
         combined_configs = subclusters  # default: same as subclusters
@@ -226,7 +226,7 @@ def run_subcluster_analysis(
                     # Build combined configs (dominant subclusters only)
                     combined_configs = [sub for sub in subclusters if sub.is_dominant]
             except Exception as e:
-                print(f"  Warning: combined group building failed ({e}), using individual subclusters")
+                print(f"  Warning: combined group building failed ({type(e).__name__}: {e}), using individual subclusters")
 
         # Stage 9: Subcluster plots
         print("\n  --- Subcluster plots ---")
@@ -254,7 +254,7 @@ def run_subcluster_analysis(
             )
             print("    Members + regions plot: OK")
         except Exception as e:
-            print(f"    Members + regions plot FAILED: {e}")
+            print(f"    Members + regions plot FAILED ({type(e).__name__}): {e}")
 
         for layout in ("vertical", "horizontal"):
             try:
@@ -268,7 +268,7 @@ def run_subcluster_analysis(
                 )
                 print(f"    2-panel optical contours ({layout}): OK")
             except Exception as e:
-                print(f"    2-panel optical contours ({layout}) FAILED: {e}")
+                print(f"    2-panel optical contours ({layout}) FAILED ({type(e).__name__}): {e}")
 
         for layout in ("vertical", "horizontal"):
             try:
@@ -285,7 +285,7 @@ def run_subcluster_analysis(
                 )
                 print(f"    Redshift + subclusters ({layout}): OK")
             except Exception as e:
-                print(f"    Redshift + subclusters ({layout}) FAILED: {e}")
+                print(f"    Redshift + subclusters ({layout}) FAILED ({type(e).__name__}): {e}")
 
         try:
             plot_stacked_redshift_histograms(
@@ -298,7 +298,7 @@ def run_subcluster_analysis(
             )
             print("    Stacked histograms: OK")
         except Exception as e:
-            print(f"    Stacked histograms FAILED: {e}")
+            print(f"    Stacked histograms FAILED ({type(e).__name__}): {e}")
 
         for layout in ("vertical", "horizontal"):
             try:
@@ -315,7 +315,7 @@ def run_subcluster_analysis(
                 )
                 print(f"    3-panel optical subclusters ({layout}): OK")
             except Exception as e:
-                print(f"    3-panel optical subclusters ({layout}) FAILED: {e}")
+                print(f"    3-panel optical subclusters ({layout}) FAILED ({type(e).__name__}): {e}")
 
         try:
             plot_combined_4panel_figure(
@@ -330,7 +330,7 @@ def run_subcluster_analysis(
             )
             print("    Combined 4-panel figure: OK")
         except Exception as e:
-            print(f"    Combined 4-panel figure FAILED: {e}")
+            print(f"    Combined 4-panel figure FAILED ({type(e).__name__}): {e}")
 
         try:
             plot_redshift_histogram_heatmap(
@@ -341,7 +341,7 @@ def run_subcluster_analysis(
             )
             print("    Redshift histogram heatmap: OK")
         except Exception as e:
-            print(f"    Redshift histogram heatmap FAILED: {e}")
+            print(f"    Redshift histogram heatmap FAILED ({type(e).__name__}): {e}")
 
         try:
             # Filename includes subcluster IDs so different runs don't overwrite
@@ -359,7 +359,7 @@ def run_subcluster_analysis(
             )
             print("    Regions + histograms: OK")
         except Exception as e:
-            print(f"    Regions + histograms FAILED: {e}")
+            print(f"    Regions + histograms FAILED ({type(e).__name__}): {e}")
 
     elif subclusters is not None and len(subclusters) < 2:
         print(f"\n  Only {len(subclusters)} subcluster — need at least 2 for bisector analysis")

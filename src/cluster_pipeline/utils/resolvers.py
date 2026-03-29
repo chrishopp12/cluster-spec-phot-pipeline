@@ -64,7 +64,7 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
             return SkyCoord(ra=ra, dec=dec, unit='deg')
 
     except Exception as e:
-        print(f"SIMBAD lookup failed: {e}")
+        print(f"SIMBAD lookup failed ({type(e).__name__}): {e}")
         raise
 
 
@@ -124,7 +124,7 @@ def get_coordinates(identifier: str) -> SkyCoord:
             return SkyCoord(ra=ra, dec=dec, unit='deg')
 
     except Exception as e:
-        print(f"NED lookup failed: {e}")
+        print(f"NED lookup failed ({type(e).__name__}): {e}")
 
     # Format for Simbad
     if stripped_name.lower().startswith('rmj'):
@@ -198,9 +198,9 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
                             print(f"Found in NED redshift table: z = {z}")
                             return float(z)
                 except Exception as e_inner:
-                    print(f"No redshift table found in NED: {e_inner}")
+                    print(f"No redshift table found in NED ({type(e_inner).__name__}): {e_inner}")
     except Exception as e:
-        print(f"NED redshift lookup failed: {e}")
+        print(f"NED redshift lookup failed ({type(e).__name__}): {e}")
 
 
     # Try Simbad
@@ -232,7 +232,7 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
                     print(f"Found in Simbad: z = {z}")
                     return float(z)
     except Exception as e:
-        print(f"Simbad redshift lookup failed: {e}")
+        print(f"Simbad redshift lookup failed ({type(e).__name__}): {e}")
 
     # Fall back to BCGs if provided
     if BCGs is not None and len(BCGs) > 0:
@@ -300,7 +300,7 @@ def query_redmapper(
         tabs = viz.query_region(coord, radius=radius_arcmin * u.arcmin, catalog=catalog)
     except Exception as e:
         if verbose:
-            print(f"redMaPPer VizieR query failed: {e}")
+            print(f"redMaPPer VizieR query failed ({type(e).__name__}): {e}")
         return None
 
     if not tabs or len(tabs[0]) == 0:

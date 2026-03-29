@@ -468,4 +468,4 @@ def add_region_fill_clipped_to_signature(ax, region_segments, color, bcg_sig, bi
                            edgecolor='none', alpha=alpha)
             ax.add_patch(poly)
         except Exception as e:
-            print(f"Polygon creation failed: {e}")
+            print(f"Polygon creation failed ({type(e).__name__}): {e}")

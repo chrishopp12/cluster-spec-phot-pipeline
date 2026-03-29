@@ -241,7 +241,7 @@ def load_user_spectra(cluster: Cluster) -> pd.DataFrame:
                     "spec_source": "Deimos",
                 })
         except Exception as e:
-            print(f"  Warning: failed to read {file_path}: {e}")
+            print(f"  Warning: failed to read {file_path} ({type(e).__name__}): {e}")
 
     deimos_df = pd.DataFrame(rows, columns=COLUMNS)
 
@@ -319,7 +319,7 @@ def query_ned(
             return df.dropna(subset=["RA", "Dec", "z"]).reset_index(drop=True)
 
         except Exception as e:
-            print(f"  NED attempt {attempt} failed: {e}")
+            print(f"  NED attempt {attempt} failed ({type(e).__name__}): {e}")
             if attempt == max_retries:
                 print("  NED: all attempts failed")
                 return pd.DataFrame(columns=COLUMNS)
@@ -410,7 +410,7 @@ def query_sdss(
         return df[COLUMNS].reset_index(drop=True)
 
     except Exception as e:
-        print(f"  SDSS query failed: {e}")
+        print(f"  SDSS query failed ({type(e).__name__}): {e}")
         return pd.DataFrame(columns=COLUMNS)
 
 
@@ -467,7 +467,7 @@ def query_desi(
         return df[COLUMNS].reset_index(drop=True)
 
     except Exception as e:
-        print(f"  DESI query failed: {e}")
+        print(f"  DESI query failed ({type(e).__name__}): {e}")
         return pd.DataFrame(columns=COLUMNS)
 
 
@@ -567,7 +567,7 @@ def _query_and_archive(
         print(f"  {name}: {len(df)} sources → {output_path}")
         return df
     except Exception as e:
-        print(f"  {name}: query failed ({e})")
+        print(f"  {name}: query failed ({type(e).__name__}: {e})")
         return pd.DataFrame(columns=COLUMNS)
 
 
