@@ -651,8 +651,13 @@ def run_cluster_plots(
         return
     redseq_df = pd.read_csv(members_file)
 
-    # Luminosity weight — always use r-band (standardized in v2)
-    lum_weight = "lum_weight_r"
+    # Luminosity weight — prefer i-band for r-i and g-i colors, fall back to r-band
+    if color_type.replace(" ", "").replace("-", "") in ("gr",):
+        lum_weight = "lum_weight_r"
+    elif "lum_weight_i" in redseq_df.columns and redseq_df["lum_weight_i"].notna().any():
+        lum_weight = "lum_weight_i"
+    else:
+        lum_weight = "lum_weight_r"
 
     a, b = fit_red_sequence(
         matched_df,
