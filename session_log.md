@@ -138,3 +138,83 @@ Tracks all decisions, rationale, and progress. Started 2026-03-28.
 - No more -9999 sentinel values (use NaN)
 - Subcluster member catalogs named by label, not bcg_id
 - subclusters.csv replaced by config.yaml for persistence
+
+### Stage Refactoring Progress
+
+- [x] Step 0: Clean slate — deleted v1 shims and old directories (-10,567 lines)
+- [x] Step 1: Cluster class rewrite — 857 → 190 line dataclass + cluster_init()
+- [x] Step 2: Spectroscopy — clean interface, per-source resilience, DEIMOS loading
+  - archival_z.csv has NO user spectra (preserved for group members)
+  - Returns (archival_df, deimos_df) separately
+- [x] Step 3: Photometry — per-survey separation, NaN handling, lowercase filenames
+  - Surveys NOT combined (Legacy/PanSTARRS not interchangeable)
+  - Returns dict[str, DataFrame]
+- [x] Step 4: Matching — returns list[BCG], DEIMOS highest priority
+  - 1,292 → 898 lines
+  - LaTeX exports moved to io/tables.py
+  - Auto-discovers photometry files on disk
+- [x] Step 5: Red Sequence — deduplicated member catalog with member_type
+  - 964 → 740 lines
+  - Plotting removed from analysis (separate concern)
+  - build_member_catalog() deduplicates spec + phot members
+  - Writes to Members/ directory
+- [x] Step 6: Subcluster Building — returns list[Subcluster] (KEY DATA MODEL CHANGE)
+  - 332 → ~390 lines (more docstrings)
+  - BCG objects created from config.yaml > BCGs.csv > redMaPPer
+  - No more CSV persistence (config.yaml via to_config())
+  - 4-level kwarg override chain preserved for CLI
+- [x] Step 7: Member Assignment — accepts list[Subcluster], populates .region/.members
+  - geometry.py updated: _get_centers() accepts Subcluster or dict or SkyCoord
+  - assignment.py: all dict access → property access
+  - Populates sub.region = Region(...) on each Subcluster
+  - Member catalogs write to Members/ with label-based naming
+- [x] Step 8: Statistics — targeted update for Subcluster properties
+  - analyze_group: accepts list[Subcluster], returns dict keyed by label
+  - bcg_z_by_subcluster: reads sub.primary_bcg.z directly
+  - build_subcluster_summary: all dict access → Subcluster properties
+  - print_subcluster_deluxetable removed (→ io/tables.py)
+  - NOTE: cluster vs subcluster stats share underlying functions — watch for unification
+
+- [x] Step 9: X-ray Processing — graceful skip, run_xray entry point, module headers
+- [x] Step 10: Plots — overlay_bcg_markers for list[BCG], subclusters.py property access, cmd.py diagnostic plots
+- [x] Step 11: CLI rewrite — cluster_init(), direct stage calls, explicit stages (spec/phot/matching/redseq/subclusters/xray)
+  - Fixed assignment.py: missing import, raw SkyCoord constructors
+  - Split subclusters stage from xray stage (run_subcluster_analysis vs run_xray_imaging)
+  - Manual BCGs from config.yaml supplemented into BCGs.csv after matching
+  - CLI --subclusters args injected into config dict
+- [x] Step 12: End-to-end testing and integration
+  - Tested full pipeline on RMJ 1327 (pipeline_v2_tests/)
+  - Both surveys always queried (Legacy + PanSTARRS)
+  - BCG enrichment from BCGs.csv into config-loaded BCG objects
+  - Combined groups support from config.yaml (list format)
+  - All 11 subcluster plots generating with correct orientations
+  - All CMD diagnostic plots (40+ files, per survey×color)
+  - All LaTeX tables wired (redshift, DEIMOS, BCG, cluster summary, subcluster summary)
+  - Skip i-band plots when imag data unavailable (no meaningless empty plots)
+  - Histogram BCG labels fixed: each panel shows its own primary BCG
+
+### Bugs Fixed During Testing
+- get_optical_image removed from Cluster class → updated all callers to use io/images
+- Dict access (.get(), ['key']) remaining in arcs.py → property access
+- analyze_group return format mismatch → adapter for plotting code
+- Subcluster histogram used wrong index (full list vs combined list)
+- BCG redshift missing for manual BCGs → enrichment from BCGs.csv
+- groups config as YAML list vs dict → handle both
+- photometry_PanSTARRS.csv → photometry_panstarrs.csv (lowercase)
+- member catalog missing z column → use cluster_members.csv not redseq file
+- lum_weight_i fallback when i-band doesn't exist → skip entirely
+
+### Current Pipeline Output (RMJ 1327 test)
+**Catalogs:** 7 archived (ned, sdss, desi, deimos, legacy, panstarrs) + combined_redshifts + matched per-survey + BCGs + cluster_members + subcluster_members
+**Plots:** ~60 PDFs (CMD diagnostics, optical/contours, X-ray, subcluster regions/histograms, redshift analysis)
+**Tables:** 7 files in Tables/ (redshift, DEIMOS, BCG, cluster summary, subcluster summary, velocity pairs)
+
+### Known Issues / TODO
+- archival_z.txt (space-delimited) no longer produced (only CSV)
+- Subcluster default radius uses arcmin but named _mpc — unit clarification needed
+- Red sequence only fits primary survey/color (not all 6 combos by default)
+- Stale FutureWarning from scipy.stats.anderson (needs method parameter for scipy 1.19+)
+- FutureWarning from pandas dtype incompatibility in redsequence.py
+- CMD diagnostic plots for colors without valid bands now skip cleanly
+- No automated geometry tests yet (test_geometry.py placeholder)
+- analyze_cluster legacy orchestrator still in xray.py (dead code, can be removed)
