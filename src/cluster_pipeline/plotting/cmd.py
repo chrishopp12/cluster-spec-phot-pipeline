@@ -651,11 +651,16 @@ def run_cluster_plots(
         return
     redseq_df = pd.read_csv(members_file)
 
-    # Luminosity weight — prefer i-band for r-i and g-i colors, fall back to r-band
-    if color_type.replace(" ", "").replace("-", "") in ("gr",):
+    # Luminosity weight — must match the color's magnitude band
+    color_key = color_type.replace(" ", "").replace("-", "")
+    if color_key == "gr":
         lum_weight = "lum_weight_r"
-    elif "lum_weight_i" in redseq_df.columns and redseq_df["lum_weight_i"].notna().any():
-        lum_weight = "lum_weight_i"
+    elif color_key in ("ri", "gi"):
+        if "lum_weight_i" in redseq_df.columns and redseq_df["lum_weight_i"].notna().any():
+            lum_weight = "lum_weight_i"
+        else:
+            print(f"  No i-band data available — skipping {survey} {color_type} plots")
+            return
     else:
         lum_weight = "lum_weight_r"
 
