@@ -625,31 +625,34 @@ def run_cluster_plots(
     os.makedirs(img_dir, exist_ok=True)
 
     # Load photometric + matched catalogs based on survey
-    if survey.lower() == "legacy":
-        phot_df = pd.read_csv(
-            os.path.join(cluster.photometry_path, "photometry_legacy.csv")
-        )
-        matched_df = pd.read_csv(
-            os.path.join(cluster.photometry_path, "legacy_matched.csv")
-        )
-    elif survey.lower() == "panstarrs":
-        phot_df = pd.read_csv(
-            os.path.join(cluster.photometry_path, "photometry_PanSTARRS.csv")
-        )
-        matched_df = pd.read_csv(
-            os.path.join(cluster.photometry_path, "panstarrs_matched.csv")
-        )
-    else:
-        raise ValueError(f"Unknown survey: {survey}")
+    survey_lower = survey.lower()
+    phot_file = os.path.join(cluster.photometry_path, f"photometry_{survey_lower}.csv")
+    matched_file = os.path.join(cluster.photometry_path, f"{survey_lower}_matched.csv")
 
-    redseq_file = get_redseq_filename(cluster.photometry_path, survey, color_type)
-    redseq_df = pd.read_csv(redseq_file)
+    if not os.path.isfile(phot_file):
+        print(f"  Photometry file not found: {phot_file} — skipping CMD plots")
+        return
+    if not os.path.isfile(matched_file):
+        print(f"  Matched file not found: {matched_file} — skipping CMD plots")
+        return
 
-    # Luminosity weight column
-    if color_type.replace(" ", "") in ("g-r", "gr"):
-        lum_weight = "lum_weight_r"
-    else:
-        lum_weight = "lum_weight_i"
+    phot_df = pd.read_csv(phot_file)
+    matched_df = pd.read_csv(matched_file)
+
+    # Member catalog (deduplicated, has z column + member_type)
+    members_file = os.path.join(cluster.members_path, "cluster_members.csv")
+    if not os.path.isfile(members_file):
+        # Fall back to redseq file
+        members_file = get_redseq_filename(cluster.members_path, survey, color_type)
+    if not os.path.isfile(members_file):
+        members_file = get_redseq_filename(cluster.photometry_path, survey, color_type)
+    if not os.path.isfile(members_file):
+        print(f"  Member catalog not found — skipping CMD plots for {survey} {color_type}")
+        return
+    redseq_df = pd.read_csv(members_file)
+
+    # Luminosity weight — always use r-band (standardized in v2)
+    lum_weight = "lum_weight_r"
 
     a, b = fit_red_sequence(
         matched_df,

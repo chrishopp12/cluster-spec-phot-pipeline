@@ -145,6 +145,52 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         click.echo("\n--- Stage 4: Red Sequence ---")
         members_df = run_redsequence(cluster)
 
+        # CMD diagnostic plots (after red sequence fitting)
+        from cluster_pipeline.plotting.cmd import run_cluster_plots, plot_all_color_magnitude
+
+        click.echo("\n--- CMD Plots ---")
+        # 2x3 CMD overview (both surveys)
+        try:
+            legacy_phot = os.path.join(cluster.photometry_path, "photometry_legacy.csv")
+            panstarrs_phot = os.path.join(cluster.photometry_path, "photometry_panstarrs.csv")
+            legacy_matched = os.path.join(cluster.photometry_path, "legacy_matched.csv")
+            panstarrs_matched = os.path.join(cluster.photometry_path, "panstarrs_matched.csv")
+
+            import pandas as pd
+            leg_df = pd.read_csv(legacy_phot) if os.path.isfile(legacy_phot) else pd.DataFrame()
+            pan_df = pd.read_csv(panstarrs_phot) if os.path.isfile(panstarrs_phot) else pd.DataFrame()
+            leg_spec = pd.read_csv(legacy_matched) if os.path.isfile(legacy_matched) else None
+            pan_spec = pd.read_csv(panstarrs_matched) if os.path.isfile(panstarrs_matched) else None
+
+            if not leg_df.empty or not pan_df.empty:
+                plot_all_color_magnitude(
+                    cluster=cluster,
+                    panstarrs_df=pan_df if not pan_df.empty else pd.DataFrame(columns=leg_df.columns),
+                    legacy_df=leg_df if not leg_df.empty else pd.DataFrame(columns=pan_df.columns),
+                    panstarrs_spec=pan_spec,
+                    legacy_spec=leg_spec,
+                    show_plots=show_plots,
+                    save_plots=save_plots,
+                    save_path=os.path.join(cluster.photometry_path, "Images", "CMDs.pdf"),
+                )
+                click.echo("    CMD overview (2x3): OK")
+        except Exception as e:
+            click.echo(f"    CMD overview FAILED: {e}")
+
+        # Per-survey CMD plots
+        for s in ["legacy", "panstarrs"]:
+            for ct in ["g-r", "r-i", "g-i"]:
+                try:
+                    run_cluster_plots(
+                        cluster, fov_size=cluster.fov, survey=s, color_type=ct,
+                        ra_offset=cluster.ra_offset, dec_offset=cluster.dec_offset,
+                        bandwidth=cluster.bandwidth,
+                        save_plots=save_plots, show_plots=show_plots,
+                    )
+                    click.echo(f"    {s} {ct}: OK")
+                except Exception as e:
+                    click.echo(f"    {s} {ct}: FAILED ({e})")
+
     # --- Subcluster building + assignment + stats + plots ---
     subcluster_list = None
     if "subclusters" in stages or "xray" in stages:
