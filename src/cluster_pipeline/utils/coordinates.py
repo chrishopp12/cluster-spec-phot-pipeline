@@ -1,4 +1,28 @@
-"""SkyCoord helpers and angular utilities."""
+#!/usr/bin/env python3
+"""
+coordinates.py
+
+SkyCoord Construction Helpers and Angular Utilities
+---------------------------------------------------------
+
+Provides standardized SkyCoord creation from arrays and DataFrames, plus
+angular separation and pixel-scale conversion helpers. All coordinate
+handling in the package should go through these functions to ensure
+consistent units (ICRS, degrees) and NaN filtering.
+
+Key functions:
+  - make_skycoord()        Build SkyCoord from RA/Dec arrays (degrees)
+  - skycoord_from_df()     Build SkyCoord from a DataFrame's RA/Dec columns
+  - angular_sep()          Pairwise angular separation between two SkyCoords
+  - arcsec_to_pixel_std()  Convert arcsecond scale to pixel std via WCS
+
+Requirements:
+  - astropy (coordinates, units, wcs), numpy, pandas
+
+Notes:
+  - RA/Dec are always assumed to be in decimal degrees (ICRS frame).
+  - NaN rows in DataFrames are silently dropped before SkyCoord creation.
+"""
 
 import numpy as np
 import pandas as pd

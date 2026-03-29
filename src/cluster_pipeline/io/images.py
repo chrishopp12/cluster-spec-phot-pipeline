@@ -1,4 +1,27 @@
-"""FITS I/O and optical image retrieval/caching."""
+#!/usr/bin/env python3
+"""
+images.py
+
+Optical Image Retrieval and Caching
+---------------------------------------------------------
+
+Queries HiPS survey servers for optical FITS images centered on a cluster
+position, with optional RA/Dec offsets. Surveys are tried in priority order
+(PanSTARRS DR1, then Legacy DR10); the first to return a valid image wins.
+Results are cached to the cluster's Photometry/ directory so repeat calls
+skip the download.
+
+Data products:
+  - Photometry/{cluster_id}_optical.fits   Cached optical cutout
+
+Requirements:
+  - astropy, astroquery (hips2fits), numpy
+
+Notes:
+  - FOV and offsets are specified in arcminutes.
+  - is_fits_valid() rejects images that are mostly empty (>50% zero pixels).
+  - Image dimensions default to DEFAULT_IMAGE_PIXELS from constants.py.
+"""
 
 from __future__ import annotations
 import os
@@ -58,7 +81,8 @@ def get_optical_image(
     {'name': 'Legacy Survey', 'hips': 'CDS/P/DESI-Legacy-Surveys/DR10/color'},
 ]
 
-    fits_path = f"{cluster.photometry_path}/optical_image_{fov}_{ra_offset}_{dec_offset}.fits"
+    img_name = f"optical_image_{fov}_{ra_offset}_{dec_offset}.fits"
+    fits_path = os.path.join(cluster.photometry_path, img_name)
     if is_fits_valid(fits_path):
         return fits_path
 
@@ -75,8 +99,8 @@ def get_optical_image(
                 projection='TAN',
                 format='fits',
             )
-            survey_path = f"{cluster.photometry_path}/{survey['name']}_optical_image_{fov}_{ra_offset}_{dec_offset}.fits"
-            fits_path = f"{cluster.photometry_path}/optical_image_{fov}_{ra_offset}_{dec_offset}.fits"
+            survey_path = os.path.join(cluster.photometry_path, f"{survey['name']}_{img_name}")
+            fits_path = os.path.join(cluster.photometry_path, img_name)
             result.writeto(survey_path, overwrite=True)
             result.writeto(fits_path, overwrite=True)
             print(f"Image retrieved and saved: {survey_path}")

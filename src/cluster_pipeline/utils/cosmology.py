@@ -1,4 +1,26 @@
-"""Cosmological distance calculations."""
+#!/usr/bin/env python3
+"""
+cosmology.py
+
+Cosmological Distance Calculations
+---------------------------------------------------------
+
+Thin wrappers around astropy's cosmology module for the two distance
+measures used in the pipeline: comoving distance (Mpc) for large-scale
+structure and angular-diameter distance (kpc/arcsec) for on-sky
+projections at the cluster redshift.
+
+Key functions:
+  - redshift_to_comoving_distance()   Comoving distance in Mpc
+  - redshift_to_proper_distance()     Angular diameter distance in kpc/arcsec
+
+Requirements:
+  - astropy, numpy
+
+Notes:
+  - Uses FlatLambdaCDM(H0=70, Om0=0.3) defined as COSMO in constants.py.
+  - Returns bare floats/arrays (astropy units stripped on output).
+"""
 
 import numpy as np
 import astropy.units as u

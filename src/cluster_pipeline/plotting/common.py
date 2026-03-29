@@ -1,4 +1,37 @@
-"""Shared plotting utilities: figure saving, scale bars, BCG markers."""
+#!/usr/bin/env python3
+"""
+common.py
+
+Shared Plotting Utilities
+---------------------------------------------------------
+
+Provides the foundational helpers that all other plotting modules depend on:
+style configuration, figure persistence, angular/physical scale bars, and
+BCG marker overlays.  These are intentionally kept independent of any
+specific plot type so they can be composed freely.
+
+Key functions:
+  - setup_plot_style()       Set publication rcParams (call from CLI entry
+                              points, not at import time)
+  - finalize_figure()        Save figure to PDF via atomic temp-file staging,
+                              optionally display, then close
+  - resolve_save_path()      Turn (save_path, filename) into a full path
+  - add_scalebar()           Draw a dual-label scale bar (kpc + arcmin) on a
+                              WCS axis using the cluster redshift
+  - overlay_bcg_markers()    Plot BCG positions as star/circle markers with a
+                              color palette and legend
+
+Requirements:
+  - astropy, matplotlib, numpy, pandas
+
+Notes:
+  - finalize_figure() writes to a local temp directory first, then moves
+    the file into place, avoiding partial-write issues on network mounts.
+  - BCG marker colors follow the _BCG_COLORS palette; the first BCG swaps
+    between black/white depending on the background argument.
+  - overlay_bcg_markers() accepts either a list of BCG objects or a CSV
+    path string for backward compatibility.
+"""
 
 from __future__ import annotations
 

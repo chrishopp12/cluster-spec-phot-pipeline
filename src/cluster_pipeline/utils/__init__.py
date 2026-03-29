@@ -1,4 +1,29 @@
-"""Small generic utilities used across the package."""
+#!/usr/bin/env python3
+"""
+__init__.py
+
+Cross-Cutting Utility Functions
+---------------------------------------------------------
+
+Small generic helpers used throughout the package that don't belong to any
+specific pipeline stage. Covers type coercion, CLI argument parsing, and
+color-magnitude helper lookups.
+
+Key functions:
+  - string_to_numeric()          Cast a string to int/float if possible
+  - find_first_val()             First non-NaN value from a row across columns
+  - to_float_or_none()           Safe float cast (returns None on failure)
+  - coerce_to_numeric()          Coerce an entire DataFrame to numeric types
+  - pop_prefixed_kwargs()         Extract prefixed CLI kwargs into a clean dict
+  - str2bool()                   Argparse-friendly boolean parser
+  - get_color_mag_functions()    Color-magnitude column/label lookup by color type
+  - split_members_by_spec()      Split a member catalog into spec/phot subsets
+
+Notes:
+  - These are intentionally dependency-light (numpy, pandas, argparse only).
+  - Imported at package level so callers use e.g. ``from cluster_pipeline.utils
+    import coerce_to_numeric``.
+"""
 
 from __future__ import annotations
 import argparse

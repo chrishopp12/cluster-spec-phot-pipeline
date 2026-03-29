@@ -1,4 +1,41 @@
-"""X-ray image visualization and multi-wavelength overlay plots."""
+#!/usr/bin/env python3
+"""
+xray.py
+
+X-ray Image Visualization and Multi-Wavelength Overlays
+---------------------------------------------------------
+
+Generates X-ray surface brightness images, optical+X-ray composites, GGM
+(Gaussian Gradient Magnitude) edge-detection overlays, and redshift scatter
+overlays.  The core plotting function ``plot_xray()`` has complex branching
+to accept data from several input combinations (raw arrays, FITS paths,
+Cluster objects) and optionally reprojects X-ray data onto an optical WCS.
+
+Key functions:
+  - plot_xray()              Single X-ray image with optional optical background
+  - make_xray_plots()        Suite of raw/filled/smoothed/reprojected images
+                              plus 3x3 and 1x3 summary panels
+  - plot_redshift_overlay()  Spectroscopic galaxies color-coded by redshift on
+                              optical or blank background with contours
+  - plot_xray_3d()           Interactive 3D surface plot of smoothed X-ray
+  - make_plots()             Top-level orchestrator that drives all X-ray,
+                              optical, contour, and redshift overlay plots
+
+Data products:
+  - Xray/Images/*.pdf        Individual and multi-panel X-ray figures
+  - Photometry/Images/*.pdf  Optical and contour overlay figures
+  - Redshifts/Images/*.pdf   Redshift scatter overlay
+
+Requirements:
+  - astropy, reproject, matplotlib, numpy, pandas
+
+Notes:
+  - plot_xray() resolves the X-ray array and WCS from whichever combination
+    of (img, xray_image_path, xray_fits_folder, cluster) is provided;
+    review the branching carefully before modifying.
+  - make_plots() calls io.images.get_optical_image() at runtime to download
+    or locate the optical FITS cutout for overlay and reprojection.
+"""
 
 from __future__ import annotations
 
@@ -84,7 +121,7 @@ def plot_xray(
     if img is not None:
         xray_data = img
         if wcs_xray is not None:
-            wcs_xray = wcs_xray
+            pass  # already provided
         elif xray_image_path is not None:
             wcs_xray = WCS(fits.getheader(xray_image_path), naxis=2)
         elif xray_fits_folder is not None:

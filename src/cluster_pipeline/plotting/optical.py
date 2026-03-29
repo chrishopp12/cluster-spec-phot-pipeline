@@ -1,4 +1,37 @@
-"""Optical image plotting with X-ray and density contour overlays."""
+#!/usr/bin/env python3
+"""
+optical.py
+
+Optical Image Plotting with Contour Overlays
+---------------------------------------------------------
+
+Displays WCS-projected optical images and composites X-ray surface
+brightness contours, photometric galaxy density contours, BCG markers,
+and scale bars on top of them.  Used directly by nearly every multi-panel
+figure in the pipeline.
+
+Key functions:
+  - plot_optical()           WCS optical image with optional contour and BCG
+                              overlays, scale bar, and legend
+  - add_xray_contours()      Smooth and contour an X-ray FITS image aligned
+                              to the optical WCS
+  - add_density_contours()   KDE-based luminosity-weighted galaxy density
+                              contours from a photometric catalog
+  - define_contours_fov()    Compute contour levels restricted to the optical
+                              field of view (avoids edge artifacts)
+
+Requirements:
+  - astropy, scipy, matplotlib, numpy
+
+Notes:
+  - All overlay functions accept namespaced **kwargs (e.g., xray_color,
+    density_bandwidth) so callers can tune appearance without separate calls.
+  - Contour level and PSF defaults cascade: explicit kwarg > Cluster
+    attribute > constants.py default.
+  - plot_optical() returns (fig, ax) when show_legend=True, or
+    (fig, ax, handles, labels) when show_legend=False, to support
+    downstream legend composition.
+"""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING

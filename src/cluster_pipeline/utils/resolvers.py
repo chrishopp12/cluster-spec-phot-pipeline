@@ -1,4 +1,30 @@
-"""NED, SIMBAD, and redMaPPer queries for cluster resolution."""
+#!/usr/bin/env python3
+"""
+resolvers.py
+
+External Service Queries for Cluster Resolution
+---------------------------------------------------------
+
+Resolves cluster names and identifiers to sky coordinates and redshifts
+using NED, SIMBAD, and VizieR (redMaPPer catalog). Used during cluster
+initialization to populate config.yaml from a name string alone.
+
+Key functions:
+  - simbad_coord_lookup()     Resolve coordinates from SIMBAD by name
+  - query_ned_coords()        Resolve coordinates from NED by name
+  - query_ned_redshift()      Fetch spectroscopic redshift from NED
+  - query_simbad_redshift()   Fetch redshift from SIMBAD
+  - query_redmapper()         Match against the redMaPPer v6.3 catalog in VizieR
+
+Requirements:
+  - astropy, astroquery (NED, SIMBAD, VizieR), numpy
+
+Notes:
+  - All queries use broad exception handling intentionally; network services
+    fail in unpredictable ways and the pipeline should continue gracefully.
+  - Returns None on failure rather than raising, so callers can fall through
+    to the next service.
+"""
 
 from __future__ import annotations
 import re

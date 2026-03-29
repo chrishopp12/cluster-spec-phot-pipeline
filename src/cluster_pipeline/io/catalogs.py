@@ -1,4 +1,31 @@
-"""CSV and DataFrame I/O for cluster catalogs."""
+#!/usr/bin/env python3
+"""
+catalogs.py
+
+Central I/O for Cluster Catalog Files
+---------------------------------------------------------
+
+Handles reading and writing of all CSV-based data products for a cluster.
+Provides path construction for red-sequence catalogs, bulk loading of the
+three core DataFrames (combined redshifts, matched photometry, members),
+and the authoritative BCG reader/filter functions.
+
+Key functions:
+  - get_redseq_filename()   Construct red-sequence catalog paths by survey/color
+  - load_dataframes()       Load the three core catalogs into DataFrames
+  - read_bcg_csv()          Authoritative BCG CSV reader (with type coercion)
+  - select_bcgs()           Filter BCGs by subcluster membership
+  - bcg_basic_info()        Summary info for a BCG subset
+  - load_photo_coords()     Extract RA/Dec arrays from photometric catalogs
+
+Requirements:
+  - pandas, numpy
+
+Notes:
+  - All numeric columns are coerced via coerce_to_numeric() on read.
+  - Missing values are NaN throughout; no sentinel values.
+  - BCG reading goes through read_bcg_csv() to ensure consistent types.
+"""
 
 from __future__ import annotations
 import os
