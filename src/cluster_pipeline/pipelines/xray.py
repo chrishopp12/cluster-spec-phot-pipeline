@@ -188,6 +188,13 @@ def run_subcluster_analysis(
             zm = stats.get("z_mean", 0)
             print(f"    Subcluster {label}: N_spec={n}, z_mean={zm:.4f}, sigma_v={sv:.1f} km/s")
 
+        # Subcluster summary table
+        try:
+            build_subcluster_summary(cluster, subclusters)
+            print("    Subcluster summary table: OK")
+        except Exception as e:
+            print(f"    Subcluster summary table FAILED: {e}")
+
         # Build combined groups (default: each subcluster is its own group)
         combined_configs = subclusters  # default: same as subclusters
         spec_groups_combined = spec_groups

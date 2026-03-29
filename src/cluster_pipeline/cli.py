@@ -139,6 +139,45 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             # Rewrite BCGs.csv with the complete list
             _write_bcgs_csv(cluster, bcgs)
 
+        # --- LaTeX tables ---
+        from cluster_pipeline.io.tables import (
+            export_redshift_table, export_new_redshift_table,
+            export_bcg_table, export_cluster_summary_row,
+        )
+        import pandas as pd
+
+        click.echo("\n--- Tables ---")
+        cluster.ensure_directories()
+
+        try:
+            export_redshift_table(cluster, combined_df)
+            click.echo("    Redshift table: OK")
+        except Exception as e:
+            click.echo(f"    Redshift table FAILED: {e}")
+
+        # New DEIMOS redshifts table (if DEIMOS data exists)
+        deimos_path = os.path.join(cluster.redshift_path, "deimos.csv")
+        if os.path.isfile(deimos_path):
+            try:
+                deimos_for_table = pd.read_csv(deimos_path)
+                export_new_redshift_table(cluster, deimos_for_table)
+                click.echo("    New redshift table: OK")
+            except Exception as e:
+                click.echo(f"    New redshift table FAILED: {e}")
+
+        try:
+            bcg_df = pd.read_csv(cluster.bcg_file)
+            export_bcg_table(cluster, bcg_df)
+            click.echo("    BCG table: OK")
+        except Exception as e:
+            click.echo(f"    BCG table FAILED: {e}")
+
+        try:
+            export_cluster_summary_row(cluster)
+            click.echo("    Cluster summary: OK")
+        except Exception as e:
+            click.echo(f"    Cluster summary FAILED: {e}")
+
     # --- Stage 4: Red Sequence ---
     if "redseq" in stages:
         from cluster_pipeline.catalog.redsequence import run_redsequence
