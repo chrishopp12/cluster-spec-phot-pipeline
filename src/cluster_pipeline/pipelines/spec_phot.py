@@ -301,11 +301,8 @@ def run_full_pipeline(
     else:
         print("\n--- Skipping red sequence fitting pipeline ---")
 
-    # Step 5: Plots (TODO: wire to refactored plotting)
-    if not skip_plots:
-        print("\n--- Plotting stage not yet wired (TODO) ---")
-    else:
-        print("\n--- Skipping plotting utility ---")
+    # Plotting is handled by the CLI (cluster-pipeline run) after this function returns.
+    # The standalone spec_phot.py path does not generate plots.
 
     print("\nPipeline complete!")
 

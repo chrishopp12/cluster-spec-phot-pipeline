@@ -19,6 +19,7 @@ from cluster_pipeline.plotting.common import (
     add_scalebar,
     overlay_bcg_markers,
 )
+from cluster_pipeline.constants import DEFAULT_PSF_ARCSEC, DEFAULT_CONTOUR_LEVELS, DEFAULT_BANDWIDTH
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -29,8 +30,8 @@ def add_xray_contours(
         xray_fits_file: str,
         optical_data: np.ndarray,
         wcs_optical: WCS,
-        levels: tuple[float, float, float] = (0.5, 0.0, 12.0),
-        psf: float = 8.0,
+        levels: tuple[float, float, float] = DEFAULT_CONTOUR_LEVELS,
+        psf: float = DEFAULT_PSF_ARCSEC,
         color: str = 'tab:red',
         alpha: float = 1.0,
         linewidth: float = 1.2,
@@ -144,7 +145,7 @@ def add_xray_contours(
 def add_density_contours(
     ax: plt.Axes,
     photometric_file: str,
-    bandwidth: float = 0.1,
+    bandwidth: float = DEFAULT_BANDWIDTH,
     levels: int = 12,
     skip: int = 2,
     color: str = 'tab:blue',

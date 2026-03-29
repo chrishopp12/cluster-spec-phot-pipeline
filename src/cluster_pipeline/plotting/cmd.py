@@ -35,6 +35,7 @@ from cluster_pipeline.utils import get_color_mag_functions, split_members_by_spe
 from cluster_pipeline.utils.coordinates import skycoord_from_df
 from cluster_pipeline.io.catalogs import get_redseq_filename
 from cluster_pipeline.plotting.common import finalize_figure
+from cluster_pipeline.constants import DEFAULT_BANDWIDTH
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -593,7 +594,7 @@ def run_cluster_plots(
     *,
     ra_offset: float = 0,
     dec_offset: float = 0,
-    bandwidth: float = 0.1,
+    bandwidth: float = DEFAULT_BANDWIDTH,
     show_plots: bool = True,
     save_plots: bool = True,
 ) -> None:

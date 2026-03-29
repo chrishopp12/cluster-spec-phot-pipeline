@@ -18,6 +18,7 @@ from reproject import reproject_interp
 
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
 from cluster_pipeline.utils import pop_prefixed_kwargs, str2bool
+from cluster_pipeline.constants import DEFAULT_XRAY_FILENAME, DEFAULT_PSF_ARCSEC
 from cluster_pipeline.xray.image import fill_holes, smoothing
 from cluster_pipeline.io.catalogs import get_redseq_filename
 from cluster_pipeline.plotting.common import finalize_figure, add_scalebar, overlay_bcg_markers
@@ -87,10 +88,10 @@ def plot_xray(
         elif xray_image_path is not None:
             wcs_xray = WCS(fits.getheader(xray_image_path), naxis=2)
         elif xray_fits_folder is not None:
-            xray_image_path = f'{xray_fits_folder}/comb-adaptimsky-400-1100.fits'
+            xray_image_path = os.path.join(xray_fits_folder, DEFAULT_XRAY_FILENAME)
             wcs_xray = WCS(fits.getheader(xray_image_path), naxis=2)
         elif cluster is not None:
-            xray_image_path = os.path.join(cluster.xray_path, 'comb-adaptimsky-400-1100.fits')
+            xray_image_path = os.path.join(cluster.xray_path, DEFAULT_XRAY_FILENAME)
             if not os.path.exists(xray_image_path):
                 print(f"X-ray image not found at {xray_image_path}, proceeding without WCS.")
                 wcs_xray = None
@@ -102,7 +103,7 @@ def plot_xray(
         xray_data = fits.getdata(xray_image_path)
         wcs_xray = WCS(fits.getheader(xray_image_path), naxis=2)
     elif xray_fits_folder is not None:
-        xray_image_path = os.path.join(xray_fits_folder, 'comb-adaptimsky-400-1100.fits')
+        xray_image_path = os.path.join(xray_fits_folder, DEFAULT_XRAY_FILENAME)
         if not os.path.exists(xray_image_path):
             raise FileNotFoundError(f"X-ray image not found at {xray_image_path}")
         xray_data = fits.getdata(xray_image_path)
@@ -110,7 +111,7 @@ def plot_xray(
     else:
         # Attempt to use Cluster object as default if provided
         if cluster is not None:
-            xray_image_path = os.path.join(cluster.xray_path, 'comb-adaptimsky-400-1100.fits')
+            xray_image_path = os.path.join(cluster.xray_path, DEFAULT_XRAY_FILENAME)
             if not os.path.exists(xray_image_path):
                 raise FileNotFoundError(
                     f"X-ray image not found at {xray_image_path}.\n"
@@ -226,7 +227,7 @@ def make_xray_plots(cluster, optical_image_file, show_plots=False, save_plots=Tr
 
     # -- Load X-ray data --
     if xray_fits_file is None:
-        xray_fits_file = os.path.join(cluster.xray_path, "comb-adaptimsky-400-1100.fits")
+        xray_fits_file = os.path.join(cluster.xray_path, DEFAULT_XRAY_FILENAME)
     raw_xray= fits.getdata(xray_fits_file)
     wcs_xray = WCS(fits.getheader(xray_fits_file), naxis=2)
 
@@ -237,7 +238,7 @@ def make_xray_plots(cluster, optical_image_file, show_plots=False, save_plots=Tr
 
 
     # -- Process X-ray images --
-    psf_arcsec = cluster.psf if hasattr(cluster, 'psf') and cluster.psf is not None else 8.0
+    psf_arcsec = cluster.psf if hasattr(cluster, 'psf') and cluster.psf is not None else DEFAULT_PSF_ARCSEC
     kernel_std_xray = arcsec_to_pixel_std(psf_arcsec, wcs_xray)
 
     filled_raw = fill_holes(raw_xray, exact=True)

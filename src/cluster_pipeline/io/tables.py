@@ -319,3 +319,67 @@ def export_cluster_summary_row(cluster: Cluster) -> str:
         f"{rich:.2f} & {rich_err:.2f} & {ra:.4f} & {dec:.4f} \\\\ \\hline"
     )
     return row
+
+
+# ====================================================================
+# Subcluster summary deluxetable
+# ====================================================================
+
+def export_subcluster_summary_table(
+    cluster_name: str,
+    subclusters: list,
+    group_stats: dict,
+    bcg_z_list: list,
+    bcg_id_str: list,
+    cluster_props: list,
+    out_path: str,
+) -> None:
+    """Write a LaTeX deluxetable summarizing subcluster properties.
+
+    Parameters
+    ----------
+    cluster_name : str
+        Cluster identifier (e.g., "RMJ 2135").
+    subclusters : list[Subcluster]
+        Subcluster objects.
+    group_stats : dict
+        Per-subcluster statistics from ``analyze_group()``.
+    bcg_z_list : list[float | None]
+        BCG redshifts aligned to subclusters.
+    bcg_id_str : list[str]
+        BCG ID strings aligned to subclusters.
+    cluster_props : list
+        [z_mean_all, sigma_v_all, n_members] for the "All" row.
+    out_path : str
+        Output .tex file path.
+    """
+    lines = []
+    lines.append(r"\begin{deluxetable}{cccccc}")
+    label_id = cluster_name.replace(" ", "")
+    lines.append(rf"\caption{{{label_id} Subcluster Properties}}\label{{tab:{label_id}_subclusters}}")
+    lines.append(r"\tablehead{")
+    lines.append(
+        r"\colhead{Subcluster} & \colhead{N} & \colhead{BCG} & \colhead{BCG $z$} & "
+        r"\colhead{Mean $z$} & \colhead{$\sigma_v$ [km s$^{-1}$]}"
+    )
+    lines.append(r"}")
+    lines.append(r"\centering")
+    lines.append(r"\startdata")
+    lines.append(f"All & {cluster_props[2]} & --- & --- & {cluster_props[0]:.4f} & {round(cluster_props[1], -1):.0f} \\\\")
+
+    for i, sub in enumerate(subclusters):
+        stats = group_stats.get(sub.label)
+        if stats is None:
+            continue
+        nmem = stats["n_spec"]
+        z_mean = stats["z_mean"]
+        sigma_v = stats["sigma_v"]
+        bcg_z = bcg_z_list[i]
+        bcg_z_str = f"{bcg_z:.3f}" if bcg_z is not None else "---"
+        lines.append(f"{bcg_id_str[i]} & {nmem} & {sub.label} & {bcg_z_str} & {z_mean:.4f} & {round(sigma_v, -1):.0f}  \\\\")
+
+    lines.append(r"\enddata")
+    lines.append(r"\end{deluxetable}")
+
+    with open(out_path, "w") as f:
+        f.write("\n".join(lines))

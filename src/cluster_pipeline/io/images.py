@@ -10,6 +10,8 @@ from astropy.coordinates import Angle
 from astropy.io import fits
 from astroquery.hips2fits import hips2fits
 
+from cluster_pipeline.constants import DEFAULT_IMAGE_PIXELS
+
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
 
@@ -65,8 +67,8 @@ def get_optical_image(
             print(f"Querying {survey['name']}...")
             result = hips2fits.query(
                 hips=survey['hips'],
-                width=802,
-                height=800,
+                width=DEFAULT_IMAGE_PIXELS[0],
+                height=DEFAULT_IMAGE_PIXELS[1],
                 ra=cluster.coords.ra + ra_offset_deg*u.deg,
                 dec=cluster.coords.dec + dec_offset_deg*u.deg,
                 fov=Angle(fov_deg, 'deg'),

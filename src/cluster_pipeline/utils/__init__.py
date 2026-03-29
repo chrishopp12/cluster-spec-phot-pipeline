@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 import argparse
-import json
 import os
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -100,74 +98,6 @@ def coerce_to_numeric(
             out[col] = pd.to_numeric(out[col], errors='coerce')
     return out
 
-
-def make_directories(
-        path: str | os.PathLike,
-        cluster: str
-    ) -> tuple[str, str]:
-    """
-    Create directories for photometry and redshift data.
-
-    Parameters
-    ----------
-    path : str | os.PathLike
-        Base path for the directories.
-    cluster : str
-        Cluster identifier.
-
-    Returns
-    -------
-    photometry_dir : str
-        Directory for photometry data.
-    redshift_dir : str
-        Directory for redshift data.
-    """
-    base = os.fspath(path)
-
-    if not os.path.exists(base):
-        raise ValueError(f"Base path {base} does not exist.")
-    if not os.path.isdir(base):
-        raise ValueError(f"Base path {base} is not a directory.")
-
-    # Define paths
-    base_photometry = os.path.join(base, "Photometry")
-    base_redshift = os.path.join(base, "Redshifts")
-    photometry_dir = os.path.join(base_photometry, f"{cluster}")
-    redshift_dir = os.path.join(base_redshift, f"{cluster}")
-
-    # Create necessary subdirectories
-    os.makedirs(base_photometry, exist_ok=True)
-    os.makedirs(base_redshift, exist_ok=True)
-    os.makedirs(photometry_dir, exist_ok=True)
-    os.makedirs(redshift_dir, exist_ok=True)
-
-    return photometry_dir, redshift_dir
-
-
-def read_json(path: Path) -> dict[str, Any]:
-    """
-    Reads a JSON file and returns its contents as a dictionary.
-
-    Parameters
-    ----------
-    path : Path
-        Path to the JSON file.
-
-    Returns
-    -------
-    dict
-        Contents of the JSON file as a dictionary.
-    """
-    try:
-        data = json.loads(path.read_text())
-    except FileNotFoundError as e:
-        raise FileNotFoundError(f"JSON file not found: {path}") from e
-    except json.JSONDecodeError as e:
-        raise ValueError(f"Error decoding JSON from file: {path}") from e
-
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected JSON file to contain a dictionary, got {type(data)}")
-    return data
 
 
 def pop_prefixed_kwargs(kwargs: dict[str, Any], prefix: str) -> dict[str, Any]:

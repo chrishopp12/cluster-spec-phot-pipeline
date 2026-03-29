@@ -43,6 +43,24 @@ DEFAULT_BANDWIDTH = 0.1       # KDE bandwidth for galaxy density
 DEFAULT_Z_PAD = 0.15  # Padding around cluster redshift for z_min/z_max
 
 # ------------------------------------
+# Red Sequence
+# ------------------------------------
+DEFAULT_MAG_MIN = 16.0       # Bright-end magnitude cut for red sequence fitting
+DEFAULT_COLOR_BAND = 0.15    # Half-width of red sequence color band (mag)
+
+# ------------------------------------
+# GMM Fitting
+# ------------------------------------
+DEFAULT_GMM_MAX_COMPONENTS = 8     # Maximum Gaussian components for BIC selection
+DEFAULT_GMM_MIN_GALAXIES = 8      # Minimum galaxies per component to keep
+DEFAULT_GMM_BROAD_THRESHOLD = 0.05 # Max sigma to keep a component (field); cluster uses 0.02
+
+# ------------------------------------
+# Imaging
+# ------------------------------------
+DEFAULT_IMAGE_PIXELS = (802, 800)  # Width, height for HiPS optical image queries
+
+# ------------------------------------
 # Subcluster Defaults
 # ------------------------------------
 DEFAULT_RADIUS_MPC = 2.5  # Subcluster search radius in Mpc

@@ -47,12 +47,13 @@ from itertools import cycle
 import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
+from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.subcluster import Subcluster
 
 
-def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05, verbose=True):
+def fit_gaussian_model(z, max_components=DEFAULT_GMM_MAX_COMPONENTS, min_galaxies=DEFAULT_GMM_MIN_GALAXIES, broad_threshold=DEFAULT_GMM_BROAD_THRESHOLD, verbose=True):
     """
     Fit a Gaussian Mixture Model (GMM) to 1D redshift data, selecting the optimal
     number of components using BIC and filtering out broad or sparse components.
@@ -66,7 +67,7 @@ def fit_gaussian_model(z, max_components=8, min_galaxies=8, broad_threshold=0.05
     min_galaxies : int, optional
         Minimum number of galaxies required for a Gaussian to be considered valid (default: 8).
     broad_threshold : float, optional
-        Exclude any Gaussian with stddev (sigma) >= this value (default: 0.04).
+        Exclude any Gaussian with stddev (sigma) >= this value (default: 0.05).
 
     Returns
     -------
@@ -750,6 +751,62 @@ def bcg_z_by_subcluster(subclusters: list) -> tuple[list, list]:
     return bcg_zs, bcg_z_errs
 
 
+def _los_dv(z1, z2):
+    """Line-of-sight velocity difference between two redshifts."""
+    zbar = (z1 + z2) / 2
+    return c.to('km/s').value * (z2 - z1) / (1.0 + zbar), zbar
+
+
+def _los_dv_err_from_sigmaz(sigmaz, z_ref):
+    """Uncertainty on delta-v from BCG redshift error."""
+    if sigmaz is None or (isinstance(sigmaz, float) and np.isnan(sigmaz)):
+        return None
+    return c.to('km/s').value * sigmaz / (1.0 + z_ref)
+
+
+def _write_bcg_pairs_csv(bcg_df, out_csv):
+    """Write pairwise BCG-BCG velocity difference CSV."""
+    df = bcg_df.copy()
+    df = df[df["BCG_priority"].notna() & df["z"].notna()].copy()
+    if df.empty:
+        pd.DataFrame([], columns=[
+            "bcg_i", "bcg_j", "z_i", "z_j", "sigma_z_i", "sigma_z_j",
+            "z_mean_pair", "dv_kms", "dv_err_kms", "abs_dv_kms"
+        ]).to_csv(out_csv, index=False)
+        return
+
+    df["BCG_priority"] = df["BCG_priority"].astype(int)
+    if "sigma_z" not in df.columns:
+        df["sigma_z"] = np.nan
+
+    rows = []
+    for i in range(len(df)):
+        for j in range(i + 1, len(df)):
+            zi = float(df.iloc[i]["z"])
+            zj = float(df.iloc[j]["z"])
+            szi = None if pd.isna(df.iloc[i]["sigma_z"]) else float(df.iloc[i]["sigma_z"])
+            szj = None if pd.isna(df.iloc[j]["sigma_z"]) else float(df.iloc[j]["sigma_z"])
+
+            dv, zbar = _los_dv(zi, zj)
+            dv_err = None
+            if szi is not None and szj is not None:
+                dv_err = c.to('km/s').value * np.sqrt(szi**2 + szj**2) / (1.0 + zbar)
+
+            rows.append({
+                "bcg_i": int(df.iloc[i]["BCG_priority"]),
+                "bcg_j": int(df.iloc[j]["BCG_priority"]),
+                "z_i": zi, "z_j": zj,
+                "sigma_z_i": "" if szi is None else szi,
+                "sigma_z_j": "" if szj is None else szj,
+                "z_mean_pair": zbar,
+                "dv_kms": dv,
+                "dv_err_kms": "" if dv_err is None else dv_err,
+                "abs_dv_kms": abs(dv),
+            })
+
+    pd.DataFrame(rows).to_csv(out_csv, index=False)
+
+
 def build_subcluster_summary(
     cluster,
     subclusters: list,
@@ -802,104 +859,7 @@ def build_subcluster_summary(
         sigma = c * sigma_z / (1 + z_mean)
     """
 
-    # TODO: This function is a dumpster fire and should be burned to the ground at my earliest convenience.
-
-    # ------------------------
-    # Local helpers
-    # ------------------------
-    def _los_dv(z1, z2):
-        zbar = (z1 + z2)/2
-        return c.to('km/s').value * (z2 - z1) / (1.0 + zbar), zbar
-
-    def _los_dv_err_from_sigmaz(sigmaz, z_ref):
-        # z_ref is the redshift in the denominator; here we use the subcluster mean
-        return None if sigmaz is None or (isinstance(sigmaz, float) and np.isnan(sigmaz)) \
-            else c.to('km/s').value * sigmaz / (1.0 + z_ref)
-
-    def _write_deluxetable_tex(cluster_name, group_stats, bcg_z_list, bcg_id_str, cluster_props, out_path):
-
-        lines = []
-        lines.append(r"\begin{deluxetable}{cccccc}")
-        label_id = cluster_name.replace(" ", "")
-        lines.append(rf"\caption{{{label_id} Subcluster Properties}}\label{{tab:{label_id}_subclusters}}")
-        lines.append(r"\tablehead{")
-        lines.append(
-            r"\colhead{Subcluster} & \colhead{N} & \colhead{BCG} & \colhead{BCG $z$} & "
-            r"\colhead{Mean $z$} & \colhead{$\sigma_v$ [km s$^{-1}$]}"
-        )
-        lines.append(r"}")
-        lines.append(r"\centering")
-        lines.append(r"\startdata")
-        lines.append(f"All & {cluster_props[2]} & --- & --- & {cluster_props[0]:.4f} & {round(cluster_props[1], -1):.0f} \\\\")
-        for i, sub in enumerate(subclusters):
-            stats = group_stats.get(sub.label)
-            if stats is None:
-                continue
-            nmem = stats["n_spec"]
-            z_mean = stats["z_mean"]
-            sigma_v = stats["sigma_v"]
-            bcg_z = bcg_z_list[i]
-            bcg_z_str = f"{bcg_z:.3f}" if bcg_z is not None else "---"
-            line = f"{bcg_id_str[i]} & {nmem} & {sub.label} & {bcg_z_str} & {z_mean:.4f} & {round(sigma_v, -1):.0f}  \\\\"
-            lines.append(line)
-
-        lines.append(r"\enddata}")
-        # fix a missing brace if any LaTeX parser complains:
-        lines[-1] = r"\enddata"
-        lines.append(r"\end{deluxetable}")
-
-        with open(out_path, "w") as f:
-            f.write("\n".join(lines))
-
-    def _write_bcg_pairs_csv(bcg_df, out_csv):
-        # Keep only rows with BCG_priority and z
-        df = bcg_df.copy()
-        df = df[df["BCG_priority"].notna() & df["z"].notna()].copy()
-        if df.empty:
-            pd.DataFrame([], columns=[
-                "bcg_i", "bcg_j", "z_i", "z_j", "sigma_z_i", "sigma_z_j",
-                "z_mean_pair", "dv_kms", "dv_err_kms", "abs_dv_kms"
-            ]).to_csv(out_csv, index=False)
-            return
-
-        # Ensure types
-        df["BCG_priority"] = df["BCG_priority"].astype(int)
-        if "sigma_z" not in df.columns:
-            df["sigma_z"] = np.nan
-
-        rows = []
-        for i in range(len(df)):
-            for j in range(i + 1, len(df)):
-                pri_i = int(df.iloc[i]["BCG_priority"])
-                pri_j = int(df.iloc[j]["BCG_priority"])
-                zi = float(df.iloc[i]["z"])
-                zj = float(df.iloc[j]["z"])
-                szi = None if pd.isna(df.iloc[i]["sigma_z"]) else float(df.iloc[i]["sigma_z"])
-                szj = None if pd.isna(df.iloc[j]["sigma_z"]) else float(df.iloc[j]["sigma_z"])
-
-                dv, zbar = _los_dv(zi, zj)
-                dv_err = None
-                if (szi is not None) and (szj is not None):
-                    dv_err = c.to('km/s').value * np.sqrt(szi**2 + szj**2) / (1.0 + zbar)
-
-                rows.append({
-                    "bcg_i": pri_i,
-                    "bcg_j": pri_j,
-                    "z_i": zi,
-                    "z_j": zj,
-                    "sigma_z_i": "" if szi is None else szi,
-                    "sigma_z_j": "" if szj is None else szj,
-                    "z_mean_pair": zbar,
-                    "dv_kms": dv,
-                    "dv_err_kms": "" if dv_err is None else dv_err,
-                    "abs_dv_kms": abs(dv),
-                })
-
-        pd.DataFrame(rows).to_csv(out_csv, index=False)
-
-    # ------------------------
-    # Main
-    # ------------------------
+    from cluster_pipeline.io.tables import export_subcluster_summary_table
 
     bcg_df = pd.read_csv(cluster.bcg_file)
 
@@ -957,7 +917,10 @@ def build_subcluster_summary(
     tables_path = getattr(cluster, "tables_path", cluster.cluster_path)
     tex_path = os.path.join(tables_path, f"{cluster.identifier.replace(' ', '')}_subclusters.tex")
     os.makedirs(tables_path, exist_ok=True)
-    _write_deluxetable_tex(cluster.identifier, group_stats, bcg_z_list, bcg_id_str, cluster_props, tex_path)
+    export_subcluster_summary_table(
+        cluster.identifier, subclusters, group_stats,
+        bcg_z_list, bcg_id_str, cluster_props, tex_path,
+    )
 
     # Pairwise BCG-BCG CSV
     pairs_csv = os.path.join(tables_path, "BCG_velocity_pairs.csv")

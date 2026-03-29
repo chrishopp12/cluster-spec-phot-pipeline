@@ -40,6 +40,7 @@ from cluster_pipeline.models.cluster import Cluster
 from cluster_pipeline.utils import coerce_to_numeric, get_color_mag_functions, split_members_by_spec
 from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.catalog.matching import match_skycoords_unique
+from cluster_pipeline.constants import DEFAULT_MAG_MIN, DEFAULT_COLOR_BAND
 
 
 # ---------------------------------------------------------------
@@ -344,7 +345,7 @@ def apply_mag_cut(
     df: pd.DataFrame,
     *,
     mag_func: callable,
-    mag_min: float = 16.0,
+    mag_min: float = DEFAULT_MAG_MIN,
 ) -> pd.DataFrame:
     """
     Apply minimum magnitude cut to DataFrame.
@@ -381,7 +382,7 @@ def fit_and_select_red_sequence(
     color_band: float = 0.2,
     color_type: str = "g-r",
     survey: str = "Legacy",
-    mag_min: float = 16.0,
+    mag_min: float = DEFAULT_MAG_MIN,
     zmin: float | None = None,
     zmax: float | None = None,
 ) -> pd.DataFrame | None:
@@ -700,7 +701,7 @@ def run_redsequence(
         cluster,
         matched_df=matched_df,
         full_df=full_df,
-        color_band=0.15,
+        color_band=DEFAULT_COLOR_BAND,
         color_type=color_type,
         survey=survey,
         zmin=z_min,
