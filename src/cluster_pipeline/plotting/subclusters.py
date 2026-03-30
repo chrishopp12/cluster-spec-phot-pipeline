@@ -1205,25 +1205,11 @@ def plot_subcluster_regions_and_histograms(
     fig : matplotlib.figure.Figure
         The created Figure object.
     """
-    # analyze_group not yet extracted into the new package
     from cluster_pipeline.subclusters.statistics import analyze_group
 
-
-
-    # Prepare data per subcluster
-    if combined_configs is not None:
-        colors = [sub.color for sub in combined_configs]
-        z_group = spec_groups_combined
-    else:
-        colors = [sub.color for sub in subclusters]
-        z_group = spec_groups
-
-
-
-
-
-    # analyze_group expects list[Subcluster]; adapt if passed DataFrames
     active_subs = combined_configs if combined_configs is not None else subclusters
+    colors = [sub.color for sub in active_subs]
+
     group_stats_local = analyze_group(active_subs)
     z_data = []
     vel_data = []
@@ -1235,10 +1221,6 @@ def plot_subcluster_regions_and_histograms(
         z_mean = stats.get("z_mean", 0.0)
         sigma_v = stats.get("sigma_v", 0.0)
         vel_data.append((vels, z_mean, sigma_v))
-
-
-    # outputs['tex_path'] and outputs['pairs_csv'] have the written files
-
 
     n_subclusters = len(z_data)
     hist_bins = np.linspace(min(np.concatenate(z_data)), max(np.concatenate(z_data)), 24)
@@ -1253,10 +1235,7 @@ def plot_subcluster_regions_and_histograms(
     ax_list = [fig.add_subplot(gs[i]) for i in range(0, n_subclusters)]
     ax_img = fig.add_subplot(gs[-1], projection=WCS(fits.getheader(_get_optical(cluster), 0), naxis=2))
 
-
-
-        # ---------------- Top Panels: Histograms ----------------
-    hist_bins = np.linspace(min(np.concatenate(z_data)), max(np.concatenate(z_data)), 24)
+    # ---------------- Top Panels: Histograms ----------------
     for i, ax in enumerate(ax_list):
         zs = z_data[i]
         z_mean = vel_data[i][1]
