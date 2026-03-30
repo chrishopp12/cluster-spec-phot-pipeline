@@ -47,7 +47,6 @@ from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
 from astropy.io import fits
 from astropy.wcs import WCS
-import astropy.units as u
 from reproject import reproject_interp
 
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
