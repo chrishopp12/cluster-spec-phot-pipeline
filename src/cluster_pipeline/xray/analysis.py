@@ -217,8 +217,6 @@ def gaussian_grad_magnitude(
     broad = gaussian_filter(xray_reprojected, sigma=5 * kernel_std_optical)
     unsharp = fine - broad
 
-    # plot_xray_3d(xray_smoothed, wcs_optical, step=4)
-
     # Example: define endpoints (RA, Dec) in degrees
     # p1 = (34.975, 1.48333)
     # p2 = (34.96731, 1.49783)

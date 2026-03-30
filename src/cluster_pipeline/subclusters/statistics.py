@@ -479,59 +479,6 @@ def analyze_group(subclusters: list, verbose=False) -> dict:
     return results
 
 
-def los_velocity_diff(z1, z2, sig_z1=None, sig_z2=None):
-    """
-    Rest-frame line-of-sight velocity difference between two redshifts.
-
-    Parameters
-    ----------
-    z1, z2 : float
-        Redshifts of the two objects.
-    sig_z1, sig_z2 : float, optional
-        1-sigma uncertainties on z1 and z2.
-
-    Returns
-    -------
-    dv_kms : float
-        Signed rest-frame LOS velocity difference [km/s] (positive if z2 > z1).
-    dv_err_kms : float or None
-        Uncertainty on dv [km/s] if uncertainties provided, else None.
-    z_mean : float
-        Mean redshift used for the rest-frame correction.
-    """
-    c_kms = c.to(u.km / u.s).value
-    z_mean = 0.5 * (z1 + z2)
-    dz = (z2 - z1)
-    dv_kms = c_kms * dz / (1.0 + z_mean)
-
-    dv_err_kms = None
-    if (sig_z1 is not None) and (sig_z2 is not None):
-        dz_err = (sig_z1**2 + sig_z2**2) ** 0.5
-        dv_err_kms = c_kms * dz_err / (1.0 + z_mean)
-    return dv_kms, dv_err_kms, z_mean
-
-
-def bcg_z_by_subcluster(subclusters: list) -> tuple[list, list]:
-    """Extract BCG redshifts aligned to subcluster order.
-
-    Parameters
-    ----------
-    subclusters : list[Subcluster]
-
-    Returns
-    -------
-    bcg_zs : list[float | None]
-    bcg_z_errs : list[float | None]
-    """
-    bcg_zs = []
-    bcg_z_errs = []
-    for sub in subclusters:
-        bcg = sub.primary_bcg
-        bcg_zs.append(bcg.z)
-        bcg_z_errs.append(bcg.sigma_z)
-    return bcg_zs, bcg_z_errs
-
-
 def _los_dv(z1, z2):
     """Line-of-sight velocity difference between two redshifts."""
     zbar = (z1 + z2) / 2

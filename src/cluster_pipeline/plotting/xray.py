@@ -17,7 +17,6 @@ Key functions:
                               plus 3x3 and 1x3 summary panels
   - plot_redshift_overlay()  Spectroscopic galaxies color-coded by redshift on
                               optical or blank background with contours
-  - plot_xray_3d()           Interactive 3D surface plot of smoothed X-ray
   - make_plots()             Top-level orchestrator that drives all X-ray,
                               optical, contour, and redshift overlay plots
 
@@ -525,75 +524,6 @@ def plot_redshift_overlay(
             return fig, ax, handles, labels
         else:
             return fig, ax, handles, labels, sc
-
-
-def plot_xray_3d(
-    xray_smoothed,
-    wcs_optical,
-    step=1 # downsample factor for speed (1 = full res)
-):
-    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 - enables 3D
-    from matplotlib import cm, colors
-
-
-    def _pixscale_arcsec_per_pix(wcs):
-        s = wcs.proj_plane_pixel_scales()
-        q = u.Quantity(s)
-        if q.unit is u.dimensionless_unscaled:
-            q = q * u.deg
-        return np.mean(q.to(u.arcsec)).value  # float arcsec/pix
-
-    ps = _pixscale_arcsec_per_pix(wcs_optical)
-
-    ny, nx = xray_smoothed.shape
-    x_arcsec = (np.arange(nx) - (nx - 1)/2.0) * ps
-    y_arcsec = (np.arange(ny) - (ny - 1)/2.0) * ps
-
-    # RA increases to the left on sky; flip X if you want that convention:
-    x_arcsec = -x_arcsec
-
-    X, Y = np.meshgrid(x_arcsec[::step], y_arcsec[::step])
-    Z = xray_smoothed[::step, ::step]
-
-    # Nice color stretch
-    vmin, vmax = np.percentile(xray_smoothed, 5), np.percentile(xray_smoothed, 99.5)
-    norm = colors.Normalize(vmin=vmin, vmax=vmax)
-    cmap = cm.get_cmap("magma")
-    facecolors = cmap(norm(Z))
-
-    fig = plt.figure(figsize=(12, 12))
-    ax = fig.add_subplot(111, projection="3d")
-    surf = ax.plot_surface(
-        X, Y, Z,
-        facecolors=facecolors,
-        linewidth=0,
-        antialiased=False,
-        shade=False,
-        rstride=1, cstride=1,
-    )
-
-    ax.set_box_aspect((1, 1, 0.5))
-    ax.grid(False)
-    ax.set_xticks([]); ax.set_yticks([]); ax.set_zticks([])
-    ax.set_xlabel(''); ax.set_ylabel(''); ax.set_zlabel('')
-
-    for axis in (ax.xaxis, ax.yaxis, ax.zaxis):
-        try:
-            axis.pane.set_visible(False)
-        except Exception:
-            # Older Matplotlib fallback: make them transparent
-            try:
-                axis.pane.set_facecolor((1, 1, 1, 0))
-                axis.pane.set_edgecolor((1, 1, 1, 0))
-                ax.xaxis.line.set_color((0,0,0,0))
-                ax.yaxis.line.set_color((0,0,0,0))
-                ax.zaxis.line.set_color((0,0,0,0))
-            except Exception:
-                pass
-
-    ax.view_init(elev=30, azim=-90)
-    plt.tight_layout()
-    plt.show()
 
 
 # -- Main driver function to make all plots --
