@@ -93,13 +93,12 @@ import argparse
 from getpass import getpass
 import json
 
-from spec_phot_pipeline.archival_z_pipeline import run_redshift_pipeline
-from spec_phot_pipeline.archival_phot_pipeline import run_photometry_pipeline
-from spec_phot_pipeline.make_catalogs_pipeline import build_redshift_catalog
-from spec_phot_pipeline.color_magnitude_pipeline import run_cmd_pipeline
-from spec_phot_pipeline.color_magnitude_plotting import run_cluster_plots
-from my_utils import str2bool
-from cluster import Cluster
+from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
+from cluster_pipeline.catalog.photometry import run_photometry
+from cluster_pipeline.catalog.matching import run_matching
+from cluster_pipeline.catalog.redsequence import run_redsequence
+from cluster_pipeline.utils import str2bool
+from cluster_pipeline.models.cluster import Cluster
 
 
 # ------------------------------------
@@ -115,14 +114,14 @@ def _resolve_casjobs_credentials(
     password: str | None,
 ) -> tuple[str, str]:
     """Resolve CasJobs credentials from CLI args, env vars, or interactive prompt.
-    
+
     Parameters
     ----------
     user : str | None
         CasJobs username from CLI arg or None.
     password : str | None
         CasJobs password from CLI arg or None.
-        
+
     Returns
     -------
     tuple[str, str]
@@ -253,7 +252,7 @@ def run_full_pipeline(
 
     if manual_list and "manual_list" in catalog_kwargs:
         raise ValueError("Provide manual BCGs via either --bcg or --catalog-kwargs, not both.")
-    
+
     z_min_resolved, z_max_resolved = cluster.resolve_z_range(z_min=z_min, z_max=z_max)
     print(f"Using zmin = {z_min_resolved}, zmax = {z_max_resolved}")
 
@@ -265,11 +264,10 @@ def run_full_pipeline(
             casjobs_user,
             casjobs_password
         )
-        run_redshift_pipeline(
-            cluster=cluster,
-            user=casjobs_user_resolved,
-            password=casjobs_password_resolved,
-            **redshift_kwargs,
+        run_spectroscopy(
+            cluster,
+            casjobs_user=casjobs_user_resolved,
+            casjobs_password=casjobs_password_resolved,
         )
     else:
         print("\n--- Skipping archival redshift pipeline ---")
@@ -278,9 +276,8 @@ def run_full_pipeline(
     # Step 2: Photometry
     if not skip_photometry:
         print("\n--- Running archival photometry pipeline ---")
-        run_photometry_pipeline(
-            cluster=cluster,
-            **photometry_kwargs,
+        run_photometry(
+            cluster,
         )
     else:
         print("\n--- Skipping archival photometry pipeline ---")
@@ -289,51 +286,27 @@ def run_full_pipeline(
     # Step 3: Catalogs
     if not skip_catalogs:
         print("\n--- Running catalog builder pipeline ---")
-        build_redshift_catalog(
-            cluster=cluster,
-            manual_list=manual_list,
-            **catalog_kwargs,
+        run_matching(
+            cluster,
+            verbose=True,
         )
     else:
         print("\n--- Skipping catalog builder pipeline ---")
 
 
-    # Step 4: Color-magnitude selection
+    # Step 4: Red sequence fitting + member catalog
     if not skip_cmd:
         print("\n--- Running red sequence fitting pipeline ---")
-        run_cmd_pipeline(
-            cluster=cluster,
-            plot_cmd_flag=True,
-            plot_spatial_flag=True,
-            show_plots=show_plots,
-            save_plots=save_plots,
-            **cmd_kwargs,
-        )
+        run_redsequence(cluster)
     else:
         print("\n--- Skipping red sequence fitting pipeline ---")
 
-
-    # Step 5: Plots
-    if not skip_plots:
-        print("\n--- Running plotting utility ---")
-        run_cluster_plots(
-            cluster=cluster,
-            fov_size=cluster.fov,
-            survey=cluster.survey,
-            color_type=cluster.color_type,
-            ra_offset=cluster.ra_offset,
-            dec_offset=cluster.dec_offset,
-            bandwidth=cluster.bandwidth,
-            save_plots=save_plots,
-            show_plots=show_plots,
-            **plotting_kwargs,
-        )
-    else:
-        print("\n--- Skipping plotting utility ---")
+    # Plotting is handled by the CLI (cluster-pipeline run) after this function returns.
+    # The standalone spec_phot.py path does not generate plots.
 
     print("\nPipeline complete!")
 
- 
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -490,7 +463,7 @@ def main():
         const=True,
         default=False,
         help="Skip the standard plotting stage.")
-    
+
     # Downstream kwargs
     parser.add_argument(
         "--redshift-kwargs",

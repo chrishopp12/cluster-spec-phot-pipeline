@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cluster-pipeline"
+version = "2.0.0a1"
+description = "Uniform first-look analysis pipeline for galaxy cluster merger candidates"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "astropy>=5.3",
+    "astroquery>=0.4.7",
+    "matplotlib>=3.7",
+    "scipy>=1.10",
+    "scikit-learn>=1.2",
+    "scikit-image>=0.20",
+    "reproject>=0.10",
+    "requests",
+    "pyyaml>=6.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov"]
+
+[project.scripts]
+cluster-pipeline = "cluster_pipeline.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
