@@ -97,7 +97,7 @@ def run_xray_imaging(
 
     # X-ray image processing (only if FITS exists)
     if has_xray:
-        print(f"\n--- X-ray image processing ---")
+        print("\n--- X-ray image processing ---")
         if verbose:
             print(f"  X-ray data: {cluster.xray_file}")
         make_plots(cluster, save_plots=save_plots, show_plots=show_plots)
@@ -141,7 +141,7 @@ def run_subcluster_analysis(
         spec_path = cluster.spec_file
 
         if not os.path.isfile(spec_path):
-            print(f"  No combined_redshifts.csv found — skipping member assignment")
+            print("  No combined_redshifts.csv found — skipping member assignment")
             return
 
         spec_df = pd.read_csv(spec_path)
@@ -155,7 +155,7 @@ def run_subcluster_analysis(
                 print(f"  Loaded {len(members_df)} cluster members")
         else:
             members_df = spec_df.copy()
-            print(f"  No cluster_members.csv — using spec catalog only")
+            print("  No cluster_members.csv — using spec catalog only")
 
         # Stage 6: Assign regions + members
         if verbose:
