@@ -16,7 +16,6 @@ import os
 
 import numpy as np
 import pandas as pd
-from astropy.coordinates import SkyCoord
 
 from cluster_pipeline.models.region import Region
 from cluster_pipeline.utils.coordinates import make_skycoord
