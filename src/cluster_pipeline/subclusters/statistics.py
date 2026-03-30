@@ -184,9 +184,8 @@ def make_stats_table(
         except Exception:
             pass
 
-        # statsmodels not available — return dummy p-value
-        p = 10.0
-        return ad2, p
+        # statsmodels not available — return dummy values
+        return np.nan, np.nan
 
     stats_list = []
     stats_values = []

@@ -20,6 +20,7 @@ dependencies = [
     "requests",
     "pyyaml>=6.0",
     "click>=8.0",
+    "statsmodels>=0.14",
 ]
 
 [project.optional-dependencies]

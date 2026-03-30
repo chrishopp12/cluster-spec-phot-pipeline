@@ -574,8 +574,11 @@ def build_member_catalog(
                     if len(fill_positions) > 0:
                         spec_members.iloc[fill_positions, spec_members.columns.get_loc(col)] = fill_values
                 else:
-                    # Column doesn't exist in spec_members, add it
-                    spec_members[col] = np.nan
+                    # Column doesn't exist in spec_members — initialize
+                    # with source dtype so string cols don't become float64
+                    spec_members[col] = pd.Series(
+                        index=spec_members.index, dtype=redseq[col].dtype
+                    )
                     spec_members.iloc[spec_idx_arr, spec_members.columns.get_loc(col)] = redseq_vals
 
     members = pd.concat([spec_members, phot_members], ignore_index=True)

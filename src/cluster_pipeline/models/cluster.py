@@ -33,9 +33,10 @@ from cluster_pipeline.constants import (
 )
 
 # Base path for cluster data directories
-_BASE_PATH_ENV_VAR = "XSORTER_CLUSTER_BASE_PATH"
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_DEFAULT_CLUSTER_PATH = _REPO_ROOT.parent / "Clusters"
+# Default: ~/Desktop/Wittman_Research/Clusters
+# Override with CLUSTER_BASE_PATH env var or --base-path CLI flag
+_BASE_PATH_ENV_VAR = "CLUSTER_BASE_PATH"
+_DEFAULT_CLUSTER_PATH = Path("~/Desktop/Wittman_Research/Clusters")
 DEFAULT_BASE_PATH = Path(
     os.environ.get(_BASE_PATH_ENV_VAR, _DEFAULT_CLUSTER_PATH)
 ).expanduser().resolve()
