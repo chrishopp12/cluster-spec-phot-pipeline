@@ -32,7 +32,6 @@ import pandas as pd
 
 from cluster_pipeline.models.cluster import Cluster
 from cluster_pipeline.subclusters.assignment import (
-    assign_subcluster_regions,
     assign_subcluster_members_multi,
     filter_members_by_config,
     make_member_catalogs,
@@ -158,9 +157,6 @@ def run_subcluster_analysis(
             print("  No cluster_members.csv — using spec catalog only")
 
         # Stage 6: Assign regions + members
-        if verbose:
-            print("\n  --- Assigning subcluster regions ---")
-        bcg_regions = assign_subcluster_regions(subclusters, verbose=verbose)
 
         if verbose:
             print("\n  --- Assigning spectroscopic members ---")
