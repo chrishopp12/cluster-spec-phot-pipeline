@@ -39,7 +39,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd

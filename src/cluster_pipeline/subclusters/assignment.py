@@ -13,12 +13,10 @@ attributes in-place.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from astropy.coordinates import SkyCoord
-import astropy.units as u
 
 from cluster_pipeline.models.region import Region
 from cluster_pipeline.utils.coordinates import make_skycoord
@@ -30,9 +28,6 @@ from cluster_pipeline.subclusters.geometry import (
     build_point_signature,
     classify_segments,
 )
-
-if TYPE_CHECKING:
-    from cluster_pipeline.models.subcluster import Subcluster
 
 
 def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=False, verbose=False):

@@ -16,14 +16,10 @@ math is identical regardless of input type.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING
 
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-
-if TYPE_CHECKING:
-    from cluster_pipeline.models.subcluster import Subcluster
 
 
 # ------------------------------------------------------------------

@@ -41,13 +41,11 @@ from __future__ import annotations
 import numpy as np
 from astropy.coordinates import SkyCoord, CartesianRepresentation, Angle
 import astropy.units as u
-import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from scipy.spatial import ConvexHull
 
 from cluster_pipeline.subclusters.geometry import (
     build_point_signature,
-    segment_segment_intersection,
 )
 
 

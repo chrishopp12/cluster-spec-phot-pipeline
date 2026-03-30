@@ -27,7 +27,6 @@ Requirements
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -45,9 +44,6 @@ import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
 from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD
-
-if TYPE_CHECKING:
-    from cluster_pipeline.models.subcluster import Subcluster
 
 
 def fit_gaussian_model(z, max_components=DEFAULT_GMM_MAX_COMPONENTS, min_galaxies=DEFAULT_GMM_MIN_GALAXIES, broad_threshold=DEFAULT_GMM_BROAD_THRESHOLD, verbose=True):

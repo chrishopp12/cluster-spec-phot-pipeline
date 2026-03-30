@@ -23,8 +23,6 @@ plot_subcluster_regions_and_histograms
 from __future__ import annotations
 
 import os
-from collections import defaultdict
-from typing import Any, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -37,26 +35,13 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from astropy.io import fits
 from astropy.wcs import WCS
-import astropy.units as u
-from astropy.coordinates import SkyCoord
-
 import scipy.stats
 from itertools import cycle
 
-from cluster_pipeline.plotting.common import finalize_figure, add_scalebar, overlay_bcg_markers
-from cluster_pipeline.plotting.optical import plot_optical, add_xray_contours, add_density_contours
-from cluster_pipeline.plotting.arcs import (
-    draw_great_circle_segment,
-    plot_bcg_region_arcs,
-    find_segment_circle_crossings,
-    add_region_fill_clipped_to_signature,
-)
-from cluster_pipeline.utils.cosmology import redshift_to_proper_distance
-from cluster_pipeline.utils.coordinates import make_skycoord
+from cluster_pipeline.plotting.common import finalize_figure
+from cluster_pipeline.plotting.optical import plot_optical
+from cluster_pipeline.plotting.arcs import plot_bcg_region_arcs
 from cluster_pipeline.utils import pop_prefixed_kwargs
-
-if TYPE_CHECKING:
-    from cluster_pipeline.models.subcluster import Subcluster
 
 
 def _get_optical(cluster):

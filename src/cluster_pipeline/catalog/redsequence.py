@@ -37,7 +37,7 @@ import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 from cluster_pipeline.models.cluster import Cluster
-from cluster_pipeline.utils import coerce_to_numeric, get_color_mag_functions, split_members_by_spec
+from cluster_pipeline.utils import coerce_to_numeric, get_color_mag_functions
 from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.catalog.matching import match_skycoords_unique
 from cluster_pipeline.constants import DEFAULT_MAG_MIN, DEFAULT_COLOR_BAND

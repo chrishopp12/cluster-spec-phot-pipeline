@@ -41,19 +41,22 @@ def main():
               default=None, help="Base directory for cluster data.")
 @click.option("--stages", multiple=True,
               type=click.Choice(["spec", "phot", "matching", "redseq", "subclusters", "xray"], case_sensitive=False),
-              help="Pipeline stages to run. Default: spec + phot + matching + redseq.")
+              help="Pipeline stages to run (default: all).")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
-@click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures.")
-@click.option("--show-plots/--no-show-plots", default=False, help="Display figures interactively.")
-@click.option("--verbose/--no-verbose", default=True, help="Print detailed progress messages.")
-@click.option("--diagnostics/--no-diagnostics", default=True, help="Generate diagnostic plots (CMD, GMM histograms).")
+@click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures (default: on).")
+@click.option("--show-plots/--no-show-plots", default=False, help="Display figures interactively (default: off).")
+@click.option("--verbose/--no-verbose", default=True, help="Print detailed progress messages (default: on).")
+@click.option("--diagnostics/--no-diagnostics", default=True, help="Generate diagnostic plots (default: on).")
 # Cluster overrides
 @click.option("--ra", type=float, default=None, help="Override RA (degrees).")
 @click.option("--dec", type=float, default=None, help="Override Dec (degrees).")
 @click.option("--redshift", type=float, default=None, help="Override redshift.")
 @click.option("--z-min", type=float, default=None, help="Minimum redshift for analysis.")
 @click.option("--z-max", type=float, default=None, help="Maximum redshift for analysis.")
-@click.option("--fov", type=float, default=None, help="Field of view (arcmin).")
+@click.option("--fov", type=float, default=None, help="Cluster FOV for subcluster-scale images (arcmin).")
+@click.option("--fov-full", type=float, default=None, help="Wide-field FOV for full-cluster images (arcmin).")
+@click.option("--ra-offset", type=float, default=None, help="RA offset for image centering (arcmin).")
+@click.option("--dec-offset", type=float, default=None, help="Dec offset for image centering (arcmin).")
 @click.option("--psf", type=float, default=None, help="PSF smoothing (arcsec).")
 @click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None)
 # Xray / subcluster options
@@ -62,8 +65,8 @@ def main():
 @click.option("--radius", type=float, default=None, help="Subcluster search radius (Mpc).")
 def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         verbose, diagnostics,
-        ra, dec, redshift, z_min, z_max, fov, psf, survey,
-        subclusters, radius):
+        ra, dec, redshift, z_min, z_max, fov, fov_full, ra_offset, dec_offset,
+        psf, survey, subclusters, radius):
     """Run pipeline stages for a cluster."""
     from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import load_config, save_config, merge_config
@@ -74,6 +77,8 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     cli_overrides = {}
     for key, val in [("ra", ra), ("dec", dec), ("redshift", redshift),
                      ("z_min", z_min), ("z_max", z_max), ("fov", fov),
+                     ("fov_full", fov_full), ("ra_offset", ra_offset),
+                     ("dec_offset", dec_offset),
                      ("psf", psf), ("survey", survey), ("radius", radius)]:
         if val is not None:
             cli_overrides[key] = val
@@ -91,7 +96,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
 
     # --- Determine stages ---
     if not stages:
-        stages = ("spec", "phot", "matching", "redseq")
+        stages = ("spec", "phot", "matching", "redseq", "subclusters", "xray")
 
     click.echo(f"\n{'='*50}")
     click.echo(f"  Cluster: {cluster.identifier}")

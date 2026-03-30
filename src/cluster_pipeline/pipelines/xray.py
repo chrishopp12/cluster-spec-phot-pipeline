@@ -28,10 +28,9 @@ from __future__ import annotations
 
 import os
 
-import numpy as np
 import pandas as pd
 
-from cluster_pipeline.io.catalogs import load_dataframes
+from cluster_pipeline.models.cluster import Cluster
 from cluster_pipeline.subclusters.assignment import (
     assign_subcluster_regions,
     assign_subcluster_members_multi,
@@ -40,9 +39,7 @@ from cluster_pipeline.subclusters.assignment import (
     make_combined_groups,
 )
 from cluster_pipeline.subclusters.statistics import (
-    velocity_dispersion,
     process_redshifts,
-    make_stats_table,
     analyze_group,
     build_subcluster_summary,
 )
@@ -56,7 +53,7 @@ from cluster_pipeline.plotting.subclusters import (
     plot_combined_4panel_figure,
     plot_subcluster_regions_and_histograms,
 )
-from cluster_pipeline.plotting.xray import plot_redshift_overlay, make_plots
+from cluster_pipeline.plotting.xray import make_plots
 
 
 # ====================================================================

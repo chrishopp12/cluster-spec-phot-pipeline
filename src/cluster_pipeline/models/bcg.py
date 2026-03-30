@@ -7,7 +7,7 @@ galaxies stored in DataFrames.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from astropy.coordinates import SkyCoord
 import astropy.units as u

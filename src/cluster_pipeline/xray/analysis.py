@@ -29,7 +29,6 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 from matplotlib.collections import LineCollection
 
 from astropy.io import fits
@@ -37,12 +36,10 @@ from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from scipy.ndimage import map_coordinates, gaussian_filter, gaussian_gradient_magnitude
-from reproject import reproject_interp, reproject_adaptive, reproject_exact
+from reproject import reproject_exact
 
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
-from cluster_pipeline.xray.image import fill_holes, smoothing
-from cluster_pipeline.plotting.common import finalize_figure, add_scalebar
-from cluster_pipeline.plotting.optical import add_xray_contours
+from cluster_pipeline.xray.image import fill_holes
 
 
 def profile_between_points(

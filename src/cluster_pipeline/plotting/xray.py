@@ -44,22 +44,19 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
 from astropy.io import fits
 from astropy.wcs import WCS
-from astropy.coordinates import SkyCoord
 import astropy.units as u
 from reproject import reproject_interp
 
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
-from cluster_pipeline.utils import pop_prefixed_kwargs, str2bool
+from cluster_pipeline.utils import pop_prefixed_kwargs
 from cluster_pipeline.constants import DEFAULT_XRAY_FILENAME, DEFAULT_PSF_ARCSEC
 from cluster_pipeline.xray.image import fill_holes, smoothing
-from cluster_pipeline.io.catalogs import get_redseq_filename
-from cluster_pipeline.plotting.common import finalize_figure, add_scalebar, overlay_bcg_markers
-from cluster_pipeline.plotting.optical import plot_optical, add_xray_contours, add_density_contours
+from cluster_pipeline.plotting.common import finalize_figure
+from cluster_pipeline.plotting.optical import plot_optical
 from cluster_pipeline.xray.analysis import gaussian_grad_magnitude
 
 

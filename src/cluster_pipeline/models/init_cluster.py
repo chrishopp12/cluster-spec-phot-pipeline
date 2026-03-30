@@ -12,7 +12,6 @@ Usage:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +19,7 @@ import pandas as pd
 import numpy as np
 
 from cluster_pipeline.models.cluster import Cluster, DEFAULT_BASE_PATH
-from cluster_pipeline.config import load_config, ensure_config
+from cluster_pipeline.config import load_config
 from cluster_pipeline.constants import (
     DEFAULT_FOV_ARCMIN,
     DEFAULT_FOV_FULL_ARCMIN,

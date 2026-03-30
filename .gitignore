@@ -29,3 +29,9 @@ __pycache__/
 .env
 /config.*
 src/cluster_pipeline.egg-info/
+
+# -----------------------
+# Claude Code session files
+# -----------------------
+CLAUDE.md
+session_log.md
