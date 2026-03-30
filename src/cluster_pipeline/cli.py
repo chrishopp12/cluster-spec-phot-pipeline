@@ -191,7 +191,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     if "redseq" in stages:
         from cluster_pipeline.catalog.redsequence import run_redsequence
         click.echo("\n--- Stage 4: Red Sequence ---")
-        members_df = run_redsequence(cluster)
+        run_redsequence(cluster)
 
         # CMD diagnostic plots (after red sequence fitting)
         if diagnostics:
