@@ -30,7 +30,7 @@ from cluster_pipeline.subclusters.geometry import (
 )
 
 
-def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=False, verbose=False):
+def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, verbose=False):
     """
     Assign spatial regions to each BCG (Brightest Cluster Galaxy) using all pairwise bisectors.
 
@@ -46,8 +46,6 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
         Absolute padding (in degrees) to expand the bounding box. [default: 0.05]
     margin_frac : float, optional
         Fractional padding (as a multiple of the max RA/Dec extent) to expand the bounding box. [default: 5.0]
-    plot : bool, optional
-        If True, display a diagnostic plot of the assigned regions. [default: False]
 
     Returns
     -------
@@ -66,7 +64,7 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
     """
 
     centers = [sub.region_center for sub in subclusters]
-    colors = [sub.color for sub in subclusters]
+
     if len(centers) < 2:
         raise ValueError("At least two BCG centers are required to assign subcluster regions.")
 
@@ -101,36 +99,6 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
             bisectors=bisectors,
         )
 
-    # --- Optional: Diagnostic Plotting ---
-    if plot:
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import MultipleLocator
-        from cluster_pipeline.plotting.arcs import add_region_fill_clipped_to_signature
-
-        fig, ax = plt.subplots(figsize=(6, 6))
-
-        for i, c in enumerate(centers):
-            ax.plot(c.ra.deg, c.dec.deg, 'k*', markersize=10, label=f"BCG {i+1}")
-            ax.text(c.ra.deg, c.dec.deg, f"BCG {i+1}", fontsize=9, va='bottom', ha='left')
-
-        ra_vals = np.array([c.ra.deg for c in centers])
-        dec_vals = np.array([c.dec.deg for c in centers])
-        pad = margin
-        ax.set_xlim(ra_vals.min() - pad, ra_vals.max() + pad)
-        ax.set_ylim(dec_vals.min() - pad, dec_vals.max() + pad)
-
-        for bcg_idx, segs in bcg_regions.items():
-            add_region_fill_clipped_to_signature(
-                ax, segs, color=colors[bcg_idx],
-                bcg_sig=bcg_signatures[bcg_idx], bisectors=bisectors,
-            )
-
-        ax.xaxis.set_major_locator(MultipleLocator(0.05))
-        ax.invert_xaxis()
-        ax.set_xlabel("R.A.")
-        ax.set_ylabel("Decl.")
-        plt.tight_layout()
-        plt.show()
     if verbose:
         print(f"  Number of BCGs: {len(centers)}")
         print(f"  Number of bisectors: {len(bisectors)}")
@@ -138,7 +106,7 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, plot=Fa
             print(f"  BCG {idx}: {len(segs)} bounding segments")
     return bcg_regions
 
-def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False, verbose=False):
+def assign_subcluster_members_multi(subclusters, galaxies_df, verbose=False):
     """
     Assign galaxies to subclusters based on bisector geometry, radial cut, and (optional) redshift bounds.
 
@@ -154,8 +122,8 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False, verbos
         List of Subcluster objects.
     galaxies_df : pd.DataFrame
         DataFrame with columns 'RA', 'Dec', and (optionally) 'z'.
-    plot : bool, optional
-        Plot diagnostics.
+    verbose : bool, optional
+        If True, print diagnostic information about assignments (default: False).
 
     Returns
     -------
@@ -192,42 +160,6 @@ def assign_subcluster_members_multi(subclusters, galaxies_df, plot=False, verbos
 
         if verbose:
             print(f"Assigned {np.sum(matches)} galaxies to region {region_id}")
-
-    # Diagnostic plot: galaxies colored by region assignment
-    if plot:
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import MultipleLocator
-        from astropy.coordinates import CartesianRepresentation
-
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(df_valid['RA'], df_valid['Dec'], c=region_ids, cmap='tab10', s=20)
-        ax.scatter([c.ra.deg for c in centers], [c.dec.deg for c in centers],
-                   c='black', s=100, marker='x')
-
-        # Draw bisector great-circle arcs
-        for b in bisectors:
-            anchor_vec = b['mid'].cartesian.xyz.value
-            pole = b['pole']
-            tangent = np.cross(pole, anchor_vec)
-            tangent /= np.linalg.norm(tangent)
-            thetas = np.linspace(-0.5, 0.5, 200) * np.pi
-            pts_xyz = (anchor_vec[:, None] * np.cos(thetas) +
-                       tangent[:, None] * np.sin(thetas)).T
-            pts = SkyCoord(CartesianRepresentation(
-                pts_xyz[:, 0], pts_xyz[:, 1], pts_xyz[:, 2]
-            ), frame='icrs')
-            ax.plot(pts.ra.deg, pts.dec.deg, 'k--', lw=1, alpha=0.6)
-
-        ra_vals = np.array([c.ra.deg for c in centers])
-        dec_vals = np.array([c.dec.deg for c in centers])
-        ax.set_xlim(ra_vals.min() - 0.05, ra_vals.max() + 0.05)
-        ax.set_ylim(dec_vals.min() - 0.05, dec_vals.max() + 0.05)
-        ax.xaxis.set_major_locator(MultipleLocator(0.05))
-        ax.invert_xaxis()
-        ax.set_xlabel("RA [deg]")
-        ax.set_ylabel("Dec [deg]")
-        plt.tight_layout()
-        plt.show()
 
 
     # --- Gather DataFrames for each region ---
