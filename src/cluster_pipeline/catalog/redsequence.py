@@ -552,32 +552,21 @@ def build_member_catalog(
     spec_coords = make_skycoord(spec_members[RA_COL].values, spec_members[DEC_COL].values)
     redseq_coords = make_skycoord(redseq[RA_COL].values, redseq[DEC_COL].values)
 
-    _, matched_redseq_idx, _ = match_skycoords_unique(
+    spec_idx_arr, redseq_idx_arr, _ = match_skycoords_unique(
         spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
     )
 
     # Keep only red-sequence sources that do NOT have a spec match
     phot_only_mask = np.ones(len(redseq), dtype=bool)
-    if len(matched_redseq_idx) > 0:
-        phot_only_mask[matched_redseq_idx] = False
+    if len(redseq_idx_arr) > 0:
+        phot_only_mask[redseq_idx_arr] = False
     phot_members = redseq.loc[phot_only_mask].copy()
     phot_members["member_type"] = "phot"
 
     # --- Merge spec members with phot-only columns from redseq ---
     # For spec members that DO have a redseq match, pull in any
     # photometric columns they might be missing (gmag, rmag, etc.)
-    if len(matched_redseq_idx) > 0:
-        # matched_redseq_idx are redseq rows matched to spec_coords in order
-        # match_skycoords_unique returns (spec_idx, redseq_idx, sep)
-        # so spec_idx and redseq_idx are paired
-        _, redseq_idx, _ = match_skycoords_unique(
-            spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
-        )
-        spec_idx_matched = np.arange(len(spec_members))
-        # Only use the matched subset
-        spec_idx_arr, redseq_idx_arr, _ = match_skycoords_unique(
-            spec_coords, redseq_coords, match_tol_arcsec=match_tol_arcsec,
-        )
+    if len(redseq_idx_arr) > 0:
         # Fill missing phot columns in spec members from matched redseq rows
         phot_fill_cols = ["gmag", "rmag", "imag", "g_r", "r_i", "g_i",
                           "lum_weight_r", PHOT_SOURCE_COL]
