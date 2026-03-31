@@ -456,6 +456,25 @@ def fit_and_select_red_sequence(
         mag_min=mag_min,
     )
 
+    # Merge spec-z info from matched catalog into full photometry catalog
+    # so apply_membership_cuts can distinguish spec vs phot-only members
+    spec_cols = [Z_COL, SIGMA_Z_COL, SPEC_SOURCE_COL]
+    available_spec_cols = [c for c in spec_cols if c in matched_df.columns]
+    if available_spec_cols:
+        matched_coords = make_skycoord(matched_df[RA_COL], matched_df[DEC_COL])
+        full_coords = make_skycoord(full_catalog[RA_COL], full_catalog[DEC_COL])
+        full_idx, matched_idx, _ = match_skycoords_unique(
+            full_coords, matched_coords, match_tol_arcsec=3.0,
+        )
+        for col in available_spec_cols:
+            if col not in full_catalog.columns:
+                full_catalog[col] = pd.Series(
+                    index=full_catalog.index, dtype=matched_df[col].dtype
+                )
+            full_catalog.iloc[full_idx, full_catalog.columns.get_loc(col)] = (
+                matched_df.iloc[matched_idx][col].values
+            )
+
     selected_df = apply_membership_cuts(
         full_catalog,
         zmin=zmin,
