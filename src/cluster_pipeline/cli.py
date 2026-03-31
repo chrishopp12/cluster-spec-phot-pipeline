@@ -86,8 +86,25 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     # --- Initialize cluster ---
     cluster = cluster_init(cluster_id, base_path=base_path, verbose=verbose, **cli_overrides)
 
-    # --- Load and merge config ---
+    # --- Load and merge config (auto-init if no config.yaml exists) ---
     cfg = load_config(cluster.cluster_path)
+    if not cfg:
+        from cluster_pipeline.config import get_default_config
+        click.echo(f"No config.yaml found — initializing {cluster.identifier}")
+        cluster.ensure_directories()
+        cfg = get_default_config()
+        cfg["identifier"] = cluster.identifier
+        if cluster.name:
+            cfg["name"] = cluster.name
+        if cluster.ra is not None:
+            cfg["ra"] = cluster.ra
+        if cluster.dec is not None:
+            cfg["dec"] = cluster.dec
+        if cluster.redshift is not None:
+            cfg["redshift"] = cluster.redshift
+        if cluster.z_min is not None and cluster.z_max is not None:
+            cfg["z_range"] = [cluster.z_min, cluster.z_max]
+        save_config(cluster.cluster_path, cfg)
     if cli_overrides:
         cfg = merge_config(cfg, cli_overrides)
 
