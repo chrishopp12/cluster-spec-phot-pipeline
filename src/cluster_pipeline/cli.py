@@ -260,6 +260,11 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
 
         subcluster_list = build_subclusters(cluster, bcgs=bcgs, config=cfg)
 
+        # Write resolved subclusters back into cfg so --save persists them
+        cfg["subclusters"] = {
+            sc.bcg_id: sc.to_config() for sc in subcluster_list
+        }
+
         click.echo("\n--- Stages 6-7: Subcluster Analysis ---")
         run_subcluster_analysis(cluster, subclusters=subcluster_list,
                                 save_plots=save_plots, show_plots=show_plots,
