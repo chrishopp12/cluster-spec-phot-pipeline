@@ -1458,8 +1458,13 @@ def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_col
     save_plots, show_plots : bool
         Plot display/save controls.
     """
-    n_subclusters = len(vel_data)
-    n_panels = n_subclusters + (1 if with_all else 0)
+    # Filter to subclusters that actually have velocity data
+    nonempty = [(i, v) for i, v in enumerate(vel_data) if len(v[0]) > 0]
+    if not nonempty:
+        print("No velocity data to plot — skipping velocity histograms.")
+        return
+
+    n_panels = len(nonempty) + (1 if with_all else 0)
     fig, axes = plt.subplots(n_panels, 1, figsize=(7, 2.5 * n_panels), sharex=False)
     if n_panels == 1:
         axes = [axes]
@@ -1467,20 +1472,20 @@ def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_col
 
     if color is None:
         default_colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        subcluster_colors = [default_colors[i % len(default_colors)] for i in range(n_subclusters)]
+        subcluster_colors = [default_colors[i % len(default_colors)] for i in range(len(vel_data))]
     elif len(color) == 1:
-        subcluster_colors = [color] * n_subclusters
+        subcluster_colors = [color] * len(vel_data)
     else:
         subcluster_colors = color
 
     textbox_props = dict(boxstyle="round,pad=0.35", fc="lightgrey", ec="0.5", alpha=0.5, linewidth=1)
 
-    for i, (velocities, z_mean, sigma_v) in enumerate(vel_data):
-        ax = axes[i]
+    for panel_idx, (orig_idx, (velocities, z_mean, sigma_v)) in enumerate(nonempty):
+        ax = axes[panel_idx]
         vmin, vmax = np.min(velocities), np.max(velocities)
         bins_local = np.linspace(vmin, vmax, bins)
-        ax.hist(velocities, bins=bins_local, color=subcluster_colors[i], edgecolor='black', density=False)
-        ax.set_title(f"SC {i+1}", loc='left', fontsize=11)
+        ax.hist(velocities, bins=bins_local, color=subcluster_colors[orig_idx], edgecolor='black', density=False)
+        ax.set_title(f"SC {orig_idx+1}", loc='left', fontsize=11)
         ax.set_xlim(vmin, vmax)
         ax.axvline(0, color='gray', linestyle=':', linewidth=1, zorder=1)
         textstr = f"$\\bar{{z}}$ = {z_mean:.4f}\n$\\sigma_v$ = {sigma_v:.0f} km/s"
@@ -1488,7 +1493,7 @@ def plot_stacked_velocity_histograms(vel_data, bins=25, color=None, combined_col
                 fontsize=10, bbox=textbox_props)
 
     if with_all:
-        all_velocities = np.concatenate([v[0] for v in vel_data if len(v[0]) > 0])
+        all_velocities = np.concatenate([v[1][0] for v in nonempty])
         ax_comb = axes[-1]
         vmin, vmax = np.min(all_velocities), np.max(all_velocities)
         bins_all = np.linspace(vmin, vmax, bins)
