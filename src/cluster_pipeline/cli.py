@@ -128,10 +128,11 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     # --- Stage 1: Spectroscopy ---
     archival_df = None
     deimos_df = None
+    manual_df = None
     if "spec" in stages:
         from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
         click.echo("--- Stage 1: Spectroscopy ---")
-        archival_df, deimos_df = run_spectroscopy(cluster)
+        archival_df, deimos_df, manual_df = run_spectroscopy(cluster)
 
     # --- Stage 2: Photometry ---
     phot_dfs = None
@@ -149,6 +150,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             cluster,
             archival_df=archival_df,
             deimos_df=deimos_df,
+            manual_df=manual_df,
             phot_dfs=phot_dfs,
             verbose=verbose,
         )
@@ -183,12 +185,18 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         except Exception as e:
             click.echo(f"    Redshift table FAILED: {e}")
 
-        # New DEIMOS redshifts table (if DEIMOS data exists)
+        # New redshifts table (DEIMOS + manual sources)
+        import glob as _glob
+        new_spec_dfs = []
         deimos_path = os.path.join(cluster.redshift_path, "deimos.csv")
         if os.path.isfile(deimos_path):
+            new_spec_dfs.append(pd.read_csv(deimos_path))
+        for f in sorted(_glob.glob(os.path.join(cluster.redshift_path, "manual_*.csv"))):
+            new_spec_dfs.append(pd.read_csv(f))
+        if new_spec_dfs:
             try:
-                deimos_for_table = pd.read_csv(deimos_path)
-                export_new_redshift_table(cluster, deimos_for_table)
+                new_spec_df = pd.concat(new_spec_dfs, ignore_index=True)
+                export_new_redshift_table(cluster, new_spec_df)
                 click.echo("    New redshift table: OK")
             except Exception as e:
                 click.echo(f"    New redshift table FAILED: {e}")
