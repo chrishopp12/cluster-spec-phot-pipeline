@@ -144,7 +144,7 @@ def export_new_redshift_table(
     print_tex: bool = False,
 ) -> None:
     """Generate a LaTeX deluxetable and machine-readable table for newly obtained
-    spectroscopic redshifts (e.g., from DEIMOS).
+    spectroscopic redshifts (e.g., from DEIMOS and manual sources).
 
     Parameters
     ----------
@@ -160,23 +160,42 @@ def export_new_redshift_table(
     Notes
     -----
     - Includes cluster identifier as a column (for multi-cluster tables).
-    - Omits spec_source column (these are all from the same new observation).
+    - When all rows share the same spec_source, the source column is omitted.
+      When multiple sources are present, a Source column is included.
     """
     cluster.ensure_directories()
     clean_id = cluster.name or cluster.identifier
 
-    header = (
-        "\\begin{deluxetable}{ccccc}\n"
-        f"\\tablecaption{{{clean_id} New Spectroscopic Redshifts}}"
-        f"\\label{{tab:{clean_id}_new_redshifts}}\n"
-        "\\tablehead{\n"
-        "  \\colhead{Cluster} & \\colhead{RA [deg]} & "
-        "\\colhead{Dec [deg]} & \\colhead{Redshift} & "
-        "\\colhead{Error} \\\\\n"
-        "}\n"
-        "\\centering\n"
-        "\\startdata\n"
-    )
+    # Determine whether to show spec_source (multiple sources present)
+    sources = new_spectroscopy_df["spec_source"].unique() if "spec_source" in new_spectroscopy_df.columns else []
+    multi_source = len(sources) > 1
+
+    if multi_source:
+        header = (
+            "\\begin{deluxetable}{cccccc}\n"
+            f"\\tablecaption{{{clean_id} New Spectroscopic Redshifts}}"
+            f"\\label{{tab:{clean_id}_new_redshifts}}\n"
+            "\\tablehead{\n"
+            "  \\colhead{Cluster} & \\colhead{RA [deg]} & "
+            "\\colhead{Dec [deg]} & \\colhead{Redshift} & "
+            "\\colhead{Error} & \\colhead{Source} \\\\\n"
+            "}\n"
+            "\\centering\n"
+            "\\startdata\n"
+        )
+    else:
+        header = (
+            "\\begin{deluxetable}{ccccc}\n"
+            f"\\tablecaption{{{clean_id} New Spectroscopic Redshifts}}"
+            f"\\label{{tab:{clean_id}_new_redshifts}}\n"
+            "\\tablehead{\n"
+            "  \\colhead{Cluster} & \\colhead{RA [deg]} & "
+            "\\colhead{Dec [deg]} & \\colhead{Redshift} & "
+            "\\colhead{Error} \\\\\n"
+            "}\n"
+            "\\centering\n"
+            "\\startdata\n"
+        )
 
     body_lines = []
     for _, row in new_spectroscopy_df.head(5).iterrows():
@@ -185,7 +204,10 @@ def export_new_redshift_table(
         z = f"{row['z']:.5f}"
         sigma = row.get("sigma_z", 0.0)
         sigma_str = "" if (sigma == 0.0 or pd.isna(sigma)) else f"{sigma:.1e}"
-        body_lines.append(f"{clean_id} & {ra} & {dec} & {z} & {sigma_str} \\\\ \\hline")
+        line = f"{clean_id} & {ra} & {dec} & {z} & {sigma_str}"
+        if multi_source:
+            line += f" & {row.get('spec_source', '')}"
+        body_lines.append(line + " \\\\ \\hline")
 
     footer = "\\enddata\n\\end{deluxetable}"
     latex_str = header + "\n".join(body_lines) + "\n" + footer
@@ -194,10 +216,11 @@ def export_new_redshift_table(
     tex_path = os.path.join(cluster.tables_path, f"{cluster_path_name}_new_redshifts_table.tex")
     emit_latex(latex_str, save_tex=save_tex, print_tex=print_tex, save_path=tex_path)
 
-    # Machine-readable table (add cluster column, drop source)
+    # Machine-readable table (add cluster column; drop source only if single-source)
     machine_df = new_spectroscopy_df.copy()
     machine_df.insert(0, "Cluster", clean_id)
-    machine_df = machine_df.drop(columns=["spec_source"], errors="ignore")
+    if not multi_source:
+        machine_df = machine_df.drop(columns=["spec_source"], errors="ignore")
 
     dat_path = os.path.join(cluster.tables_path, f"{cluster_path_name}_new_redshifts_table.dat")
     machine_df.to_csv(dat_path, sep="\t", index=False)

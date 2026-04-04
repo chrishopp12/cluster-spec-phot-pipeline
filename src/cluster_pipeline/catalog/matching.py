@@ -6,10 +6,11 @@ Stage 3: Catalog Matching and BCG Identification
 ---------------------------------------------------------
 
 Merges archival spectroscopy with user DEIMOS spectra (DEIMOS highest
-priority), crossmatches with photometry, and identifies BCG candidates.
+priority) and manual redshift files (lowest priority), crossmatches with
+photometry, and identifies BCG candidates.
 
 Data products:
-  - Redshifts/combined_redshifts.csv   Merged spec catalog (DEIMOS + archival)
+  - Redshifts/combined_redshifts.csv   Merged spec catalog (DEIMOS + archival + manual)
   - Photometry/{survey}_matched.csv    Per-survey crossmatch (spec+phot only)
   - BCGs.csv                           BCG catalog with spec + phot columns
 
@@ -29,6 +30,7 @@ Notes:
 from __future__ import annotations
 
 import os
+import glob
 from typing import Any
 
 import numpy as np
@@ -266,6 +268,70 @@ def _merge_spectra(
         print(f"Combined total: {len(combined)}")
 
     return combined
+
+
+# ---------------------------------------------------------------
+# Append manual spectra (lowest priority)
+# ---------------------------------------------------------------
+
+def _append_manual_spectra(
+    combined_df: pd.DataFrame,
+    manual_df: pd.DataFrame,
+    *,
+    match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """Append manual spectra at lowest priority.
+
+    Manual sources within *match_tol_arcsec* of any existing source in
+    *combined_df* are dropped.  Only unmatched manual sources are appended.
+
+    Parameters
+    ----------
+    combined_df : pd.DataFrame
+        Existing merged catalog (DEIMOS + archival).
+    manual_df : pd.DataFrame
+        Manual redshift catalog (RA, Dec, z, sigma_z, spec_source).
+    match_tol_arcsec : float
+        Positional tolerance for deduplication.
+    verbose : bool
+        Print merge statistics.
+
+    Returns
+    -------
+    pd.DataFrame
+        Combined catalog with manual-unique rows appended.
+    """
+    combined_df = _standardize_redshift_df(combined_df)
+    manual_df = _standardize_redshift_df(manual_df)
+
+    if manual_df.empty:
+        return combined_df.copy()
+
+    if combined_df.empty:
+        if verbose:
+            print(f"No existing spectra. Returning {len(manual_df)} manual sources only.")
+        return manual_df.copy()
+
+    coords_manual = skycoord_from_df(manual_df)
+    coords_combined = skycoord_from_df(combined_df)
+
+    manual_dup_idx, _, _ = match_skycoords_unique(
+        coords_manual, coords_combined, match_tol_arcsec=match_tol_arcsec,
+    )
+
+    manual_unique = manual_df.drop(index=manual_dup_idx).reset_index(drop=True)
+    result = pd.concat([combined_df, manual_unique], ignore_index=True)
+
+    if verbose:
+        n_manual = len(manual_df)
+        n_dup = len(manual_dup_idx)
+        print(f"Manual sources: {n_manual}")
+        print(f"  Duplicates removed (within {match_tol_arcsec}\"): {n_dup}")
+        print(f"  Manual unique: {n_manual - n_dup}")
+        print(f"Combined total: {len(result)}")
+
+    return result
 
 
 # ---------------------------------------------------------------
@@ -690,6 +756,7 @@ def run_matching(
     *,
     archival_df: pd.DataFrame | None = None,
     deimos_df: pd.DataFrame | None = None,
+    manual_df: pd.DataFrame | None = None,
     phot_dfs: dict[str, pd.DataFrame] | None = None,
     match_tol_arcsec: float = DEFAULT_TOL_ARCSEC,
     verbose: bool = True,
@@ -706,6 +773,9 @@ def run_matching(
     deimos_df : pd.DataFrame, optional
         DEIMOS spectroscopic catalog.  If *None*, loads from
         ``Redshifts/deimos.csv``.
+    manual_df : pd.DataFrame, optional
+        Manual redshift catalog.  If *None*, auto-discovers
+        ``Redshifts/manual_*.csv`` files.
     phot_dfs : dict[str, pd.DataFrame], optional
         Per-survey photometry catalogs, keyed by survey name
         (e.g. ``{"panstarrs": df, "legacy": df}``).  If *None*, loads
@@ -718,7 +788,7 @@ def run_matching(
     Returns
     -------
     combined_df : pd.DataFrame
-        Merged spectroscopic catalog (DEIMOS + archival, deduplicated).
+        Merged spectroscopic catalog (DEIMOS + archival + manual, deduplicated).
     matched_dfs : dict[str, pd.DataFrame]
         Per-survey crossmatched catalogs (only true spec+phot matches).
     bcgs : list[BCG]
@@ -726,6 +796,8 @@ def run_matching(
 
     Notes
     -----
+    Deduplication priority: DEIMOS (highest) > archival > manual (lowest).
+
     Side effects (file writes):
       - ``Redshifts/combined_redshifts.csv``
       - ``Photometry/{survey}_matched.csv`` for each survey
@@ -756,16 +828,36 @@ def run_matching(
             if verbose:
                 print(f"No deimos.csv found at {deimos_path}.")
 
+    if manual_df is None:
+        manual_files = sorted(glob.glob(
+            os.path.join(cluster.redshift_path, "manual_*.csv")
+        ))
+        if manual_files:
+            manual_dfs = [pd.read_csv(f) for f in manual_files]
+            manual_df = pd.concat(manual_dfs, ignore_index=True)
+            if verbose:
+                for f in manual_files:
+                    print(f"Loaded manual redshifts from {os.path.basename(f)}")
+        else:
+            manual_df = pd.DataFrame(columns=COLUMNS_SPEC)
+
     if phot_dfs is None:
         phot_dfs = _discover_phot_files(cluster, verbose=verbose)
 
     # ----------------------------------------------------------
-    # 2. Merge spectra: DEIMOS highest priority
+    # 2. Merge spectra: DEIMOS highest, then archival, then manual
     # ----------------------------------------------------------
     combined_df = _merge_spectra(
         archival_df, deimos_df,
         match_tol_arcsec=match_tol_arcsec, verbose=verbose,
     )
+
+    if not manual_df.empty:
+        combined_df = _append_manual_spectra(
+            combined_df, manual_df,
+            match_tol_arcsec=match_tol_arcsec, verbose=verbose,
+        )
+
     combined_path = os.path.join(cluster.redshift_path, "combined_redshifts.csv")
     combined_df.to_csv(combined_path, index=False)
     if verbose:

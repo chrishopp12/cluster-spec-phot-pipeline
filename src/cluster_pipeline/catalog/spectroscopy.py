@@ -16,13 +16,16 @@ Archival sources:
 
 User spectra:
   - Keck/DEIMOS zdump*.txt files (4-column: RA, Dec, z, sigma_z)
+  - Manual redshift files: manual_z_{source}.txt (same 4-column format)
+    The {source} portion of the filename becomes the spec_source value.
 
 Data products (all archived individually before merging):
-  - Redshifts/ned.csv         Raw NED query result
-  - Redshifts/sdss.csv        Raw SDSS query result
-  - Redshifts/desi.csv        Raw DESI query result
-  - Redshifts/deimos.csv      User DEIMOS spectra (separate from archival)
-  - Redshifts/archival_z.csv  Merged + deduplicated archival catalog (NO user spectra)
+  - Redshifts/ned.csv              Raw NED query result
+  - Redshifts/sdss.csv             Raw SDSS query result
+  - Redshifts/desi.csv             Raw DESI query result
+  - Redshifts/deimos.csv           User DEIMOS spectra (separate from archival)
+  - Redshifts/manual_{source}.csv  Manual redshifts per source
+  - Redshifts/archival_z.csv       Merged + deduplicated archival catalog (NO user spectra)
 
 The archival_z.csv file is used by other group members in their own pipelines.
 DEIMOS spectra are merged with archival data in Stage 3 (catalog matching),
@@ -91,12 +94,13 @@ def run_spectroscopy(
     casjobs_user: str | None = None,
     casjobs_password: str | None = None,
     load_deimos: bool = True,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    load_manual: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Query archival spectroscopic redshifts and load user spectra.
 
     Each archival source is queried independently — a failure in one does not
-    prevent the others from running. User spectra (DEIMOS) are loaded and
-    archived separately.
+    prevent the others from running. User spectra (DEIMOS) and manual
+    redshift files are loaded and archived separately.
 
     Parameters
     ----------
@@ -115,6 +119,8 @@ def run_spectroscopy(
         SDSS CasJobs password. Falls back to env ``CASJOBS_PW``.
     load_deimos : bool
         Whether to load user DEIMOS spectra from zdump*.txt files. [default: True]
+    load_manual : bool
+        Whether to load manual redshift files from manual_z_*.txt. [default: True]
 
     Returns
     -------
@@ -126,6 +132,10 @@ def run_spectroscopy(
         User DEIMOS spectra (separate, not merged into archival).
         Columns: ``RA, Dec, z, sigma_z, spec_source``.
         Empty DataFrame if no zdump files or ``load_deimos=False``.
+    manual_df : pd.DataFrame
+        Manual redshifts from ``manual_z_{source}.txt`` files.
+        Columns: ``RA, Dec, z, sigma_z, spec_source``.
+        Empty DataFrame if no manual files or ``load_manual=False``.
 
     Notes
     -----
@@ -133,8 +143,10 @@ def run_spectroscopy(
       any deduplication.
     - Archival catalog written to Redshifts/archival_z.csv (no user spectra).
     - DEIMOS spectra written to Redshifts/deimos.csv.
-    - Merging archival + DEIMOS into combined_redshifts.csv happens in
-      Stage 3 (catalog matching), where DEIMOS gets highest priority.
+    - Manual spectra written to Redshifts/manual_{source}.csv per source file.
+    - Merging archival + DEIMOS + manual into combined_redshifts.csv happens in
+      Stage 3 (catalog matching), where DEIMOS gets highest priority and manual
+      gets lowest.
     """
     if cluster.coords is None:
         raise ValueError("Cluster coordinates not set. Cannot query spectroscopy.")
@@ -189,7 +201,12 @@ def run_spectroscopy(
     if load_deimos:
         deimos_df = load_user_spectra(cluster)
 
-    return archival_df, deimos_df
+    # --- Load manual redshift files (archived separately) ---
+    manual_df = pd.DataFrame(columns=COLUMNS)
+    if load_manual:
+        manual_df = load_manual_spectra(cluster)
+
+    return archival_df, deimos_df, manual_df
 
 
 # ====================================================================
@@ -251,6 +268,75 @@ def load_user_spectra(cluster: Cluster) -> pd.DataFrame:
         print(f"  DEIMOS: {len(deimos_df)} spectra → {deimos_path}")
 
     return deimos_df
+
+
+# ====================================================================
+# Manual redshift files
+# ====================================================================
+
+def load_manual_spectra(cluster: Cluster) -> pd.DataFrame:
+    """Load manual redshift files matching ``manual_z_{source}.txt``.
+
+    Each file uses the same 4-column whitespace-delimited format as zdump
+    files (RA, Dec, z, sigma_z — no header). The ``{source}`` portion of
+    the filename is used as the ``spec_source`` value, so
+    ``manual_z_hectospec.txt`` produces ``spec_source="hectospec"``.
+
+    Each source file is archived to ``Redshifts/manual_{source}.csv``.
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Cluster object with valid ``redshift_path``.
+
+    Returns
+    -------
+    manual_df : pd.DataFrame
+        DataFrame with columns ``RA, Dec, z, sigma_z, spec_source``.
+        Empty DataFrame if no manual files found or all fail to parse.
+    """
+    all_rows = []
+
+    pattern = os.path.join(cluster.redshift_path, "manual_z_*.txt")
+    manual_files = sorted(glob.glob(pattern))
+
+    if not manual_files:
+        return pd.DataFrame(columns=COLUMNS)
+
+    for file_path in manual_files:
+        # Extract source name: manual_z_{source}.txt → source
+        stem = os.path.splitext(os.path.basename(file_path))[0]
+        source = stem[len("manual_z_"):]
+
+        if not source:
+            print(f"  Warning: skipping {file_path} (no source name after 'manual_z_')")
+            continue
+
+        rows = []
+        try:
+            data = np.loadtxt(file_path, unpack=True)
+            if data.ndim == 1:
+                data = data.reshape(4, -1)
+            for ra, dec, z, sigma_z in zip(*data):
+                rows.append({
+                    "RA": float(ra),
+                    "Dec": float(dec),
+                    "z": float(z),
+                    "sigma_z": float(sigma_z),
+                    "spec_source": source,
+                })
+        except Exception as e:
+            print(f"  Warning: failed to read {file_path} ({type(e).__name__}): {e}")
+            continue
+
+        source_df = pd.DataFrame(rows, columns=COLUMNS)
+        if not source_df.empty:
+            csv_path = os.path.join(cluster.redshift_path, f"manual_{source}.csv")
+            source_df.to_csv(csv_path, index=False)
+            print(f"  Manual ({source}): {len(source_df)} spectra → {csv_path}")
+            all_rows.extend(rows)
+
+    return pd.DataFrame(all_rows, columns=COLUMNS)
 
 
 # ====================================================================
