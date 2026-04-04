@@ -102,8 +102,10 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             cfg["dec"] = cluster.dec
         if cluster.redshift is not None:
             cfg["redshift"] = cluster.redshift
-        if cluster.z_min is not None and cluster.z_max is not None:
-            cfg["z_range"] = [cluster.z_min, cluster.z_max]
+        if cluster.z_min is not None:
+            cfg["z_min"] = cluster.z_min
+        if cluster.z_max is not None:
+            cfg["z_max"] = cluster.z_max
         save_config(cluster.cluster_path, cfg)
     if cli_overrides:
         cfg = merge_config(cfg, cli_overrides)
