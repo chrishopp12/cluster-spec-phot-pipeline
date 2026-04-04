@@ -43,7 +43,7 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+from matplotlib.ticker import MaxNLocator, MultipleLocator, FormatStrFormatter
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -505,7 +505,7 @@ def plot_redshift_overlay(
     if colorbar:
         cbar = fig.colorbar(sc, ax=ax, pad=0.01, shrink=0.76)
         cbar.set_label("Redshift (z)")
-        cbar.locator = MultipleLocator(0.005)
+        cbar.locator = MaxNLocator(nbins=5)
         cbar.formatter = FormatStrFormatter('%.3f')
         cbar.update_ticks()
 

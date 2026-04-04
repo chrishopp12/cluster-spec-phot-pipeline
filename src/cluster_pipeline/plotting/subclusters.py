@@ -314,7 +314,7 @@ def plot_redshift_and_subclusters_figure(
             cbar_ax = fig.add_axes([pos.x1 + 0.05, pos.y0 + 0.022, 0.04, pos.height + 0.058])
         cbar = fig.colorbar(sc, cax=cbar_ax)
         cbar.set_label("Redshift (z)")
-        cbar.locator = MultipleLocator(0.005)
+        cbar.locator = MaxNLocator(nbins=5)
         cbar.formatter = FormatStrFormatter('%.3f')
         cbar.update_ticks()
 
@@ -664,7 +664,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
         ])
         cbar = fig.colorbar(sc, cax=cbar_ax, orientation='horizontal')
 
-        cbar.locator = MultipleLocator(0.005)
+        cbar.locator = MaxNLocator(nbins=5)
         cbar.formatter = FormatStrFormatter('%.3f')
         cbar.update_ticks()
 
@@ -1142,7 +1142,7 @@ def plot_combined_4panel_figure(
     cbar_ax = fig.add_axes([pos.x1 + 0.01, pos.y0, 0.015, pos.height])
     cbar = fig.colorbar(sc, cax=cbar_ax)
     cbar.set_label("Redshift (z)")
-    cbar.locator = MultipleLocator(0.005)
+    cbar.locator = MaxNLocator(nbins=5)
     cbar.formatter = FormatStrFormatter('%.3f')
     cbar.update_ticks()
 
