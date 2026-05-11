@@ -57,6 +57,7 @@ def main():
 @click.option("--fov-full", type=float, default=None, help="Wide-field FOV for full-cluster images (arcmin).")
 @click.option("--ra-offset", type=float, default=None, help="RA offset for image centering (arcmin).")
 @click.option("--dec-offset", type=float, default=None, help="Dec offset for image centering (arcmin).")
+@click.option("--search-radius", type=float, default=None, help="Search radius for catalog queries (arcmin).")
 @click.option("--psf", type=float, default=None, help="PSF smoothing (arcsec).")
 @click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None)
 # Xray / subcluster options
@@ -66,7 +67,7 @@ def main():
 def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         verbose, diagnostics,
         ra, dec, redshift, z_min, z_max, fov, fov_full, ra_offset, dec_offset,
-        psf, survey, subclusters, radius):
+        search_radius, psf, survey, subclusters, radius):
     """Run pipeline stages for a cluster."""
     from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import load_config, save_config, merge_config
@@ -78,7 +79,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     for key, val in [("ra", ra), ("dec", dec), ("redshift", redshift),
                      ("z_min", z_min), ("z_max", z_max), ("fov", fov),
                      ("fov_full", fov_full), ("ra_offset", ra_offset),
-                     ("dec_offset", dec_offset),
+                     ("dec_offset", dec_offset), ("search_radius", search_radius),
                      ("psf", psf), ("survey", survey), ("radius", radius)]:
         if val is not None:
             cli_overrides[key] = val
@@ -132,14 +133,16 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
     if "spec" in stages:
         from cluster_pipeline.catalog.spectroscopy import run_spectroscopy
         click.echo("--- Stage 1: Spectroscopy ---")
-        archival_df, deimos_df, manual_df = run_spectroscopy(cluster)
+        archival_df, deimos_df, manual_df = run_spectroscopy(
+            cluster, radius_arcmin=cluster.search_radius)
 
     # --- Stage 2: Photometry ---
     phot_dfs = None
     if "phot" in stages:
         from cluster_pipeline.catalog.photometry import run_photometry
         click.echo("\n--- Stage 2: Photometry ---")
-        phot_dfs = run_photometry(cluster, surveys=["legacy", "panstarrs"])
+        phot_dfs = run_photometry(cluster, surveys=["legacy", "panstarrs"],
+                                  radius_arcmin=cluster.search_radius)
 
     # --- Stage 3: Matching ---
     bcgs = None
@@ -281,7 +284,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             for sid in subclusters:
                 entry = {"bcg_id": sid}
                 if radius is not None:
-                    entry["radius_mpc"] = radius
+                    entry["radius_arcmin"] = radius
                 sc_dict[sid] = entry
             cfg["subclusters"] = sc_dict
 
