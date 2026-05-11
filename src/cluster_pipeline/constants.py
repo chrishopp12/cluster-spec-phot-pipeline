@@ -38,8 +38,9 @@ DEFAULT_PHOT_SKIP = 2         # Number of lowest density levels to skip
 DEFAULT_BANDWIDTH = 0.1       # KDE bandwidth for galaxy density
 
 # ------------------------------------
-# Redshift
+# Catalog Query
 # ------------------------------------
+DEFAULT_SEARCH_RADIUS_ARCMIN = 10.0  # Search radius for spectroscopic/photometric queries
 DEFAULT_Z_PAD = 0.15  # Padding around cluster redshift for z_min/z_max
 
 # ------------------------------------
@@ -63,7 +64,7 @@ DEFAULT_IMAGE_PIXELS = (802, 800)  # Width, height for HiPS optical image querie
 # ------------------------------------
 # Subcluster Defaults
 # ------------------------------------
-DEFAULT_RADIUS_MPC = 2.5  # Subcluster search radius in Mpc
+DEFAULT_RADIUS_ARCMIN = 2.5  # Subcluster member-assignment radius in arcmin
 
 DEFAULT_COLORS = [
     "white", "tab:green", "tab:purple", "tab:cyan", "tab:pink",
