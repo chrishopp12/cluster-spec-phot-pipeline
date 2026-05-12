@@ -44,12 +44,12 @@ from astroquery.vizier import Vizier
 from astroquery.utils.tap.core import TapPlus
 
 from cluster_pipeline.models.cluster import Cluster
+from cluster_pipeline.constants import DEFAULT_SEARCH_RADIUS_ARCMIN
 from cluster_pipeline.utils import coerce_to_numeric
 
 # ------------------------------------
 # Constants
 # ------------------------------------
-DEFAULT_RADIUS_ARCMIN = 10.0
 DEFAULT_LEGACY_STEP = 2000
 DEFAULT_LEGACY_MAX_ROWS = 150000
 
@@ -75,7 +75,7 @@ def run_photometry(
     cluster: Cluster,
     *,
     surveys: list[str] | None = None,
-    radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
+    radius_arcmin: float = DEFAULT_SEARCH_RADIUS_ARCMIN,
     retrieve: bool = True,
 ) -> dict[str, pd.DataFrame]:
     """Query archival photometry and return per-survey catalogs.
