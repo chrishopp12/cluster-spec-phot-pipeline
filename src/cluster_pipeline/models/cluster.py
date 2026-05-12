@@ -21,6 +21,7 @@ from cluster_pipeline.constants import (
     DEFAULT_FOV_FULL_ARCMIN,
     DEFAULT_RA_OFFSET_ARCMIN,
     DEFAULT_DEC_OFFSET_ARCMIN,
+    DEFAULT_SEARCH_RADIUS_ARCMIN,
     DEFAULT_SURVEY,
     DEFAULT_COLOR_TYPE,
     DEFAULT_PHOT_LEVELS,
@@ -73,6 +74,7 @@ class Cluster:
     fov_full: float = DEFAULT_FOV_FULL_ARCMIN
     ra_offset: float = DEFAULT_RA_OFFSET_ARCMIN
     dec_offset: float = DEFAULT_DEC_OFFSET_ARCMIN
+    search_radius: float = DEFAULT_SEARCH_RADIUS_ARCMIN
     survey: str = DEFAULT_SURVEY
     color_type: str = DEFAULT_COLOR_TYPE
     psf: float = DEFAULT_PSF_ARCSEC
