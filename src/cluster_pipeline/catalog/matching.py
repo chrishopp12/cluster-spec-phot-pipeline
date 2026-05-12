@@ -411,11 +411,11 @@ def get_BCGs(
 ) -> list[BCG]:
     """Retrieve BCG candidates, trying sources in priority order.
 
-    Priority order:
-      1. config.yaml ``BCGs`` section
-      2. Existing BCGs.csv on disk
-      3. redMaPPer VizieR query
-      4. Cluster center as a single fallback BCG
+    Seed BCGs come from (in order of priority): existing BCGs.csv,
+    redMaPPer VizieR query, or cluster-center fallback.  Manual BCGs
+    from config.yaml ``bcgs`` section are then layered on top
+    (new IDs are appended; existing IDs are overridden but inherit
+    any missing fields from the seed).
 
     Parameters
     ----------
@@ -429,46 +429,29 @@ def get_BCGs(
     Returns
     -------
     list[BCG]
-        BCG candidate objects (typically 1--5).
+        BCG candidate objects (typically 1--5, plus any manual entries).
 
     Raises
     ------
     ValueError
         If no BCGs can be determined and cluster.coords is None.
     """
-    # --- 1. Try config.yaml ---
-    cfg = load_config(cluster.cluster_path)
-    bcg_section = cfg.get("BCGs", cfg.get("bcgs", None))
-
-    if bcg_section and isinstance(bcg_section, dict):
-        bcgs = []
-        for bcg_id, bcg_cfg in bcg_section.items():
-            if isinstance(bcg_cfg, dict) and "ra" in bcg_cfg and "dec" in bcg_cfg:
-                bcgs.append(BCG.from_config(int(bcg_id), bcg_cfg))
-        if bcgs:
-            if verbose:
-                print(f"Loaded {len(bcgs)} BCG(s) from config.yaml.")
-            return bcgs
-
-    # --- 2. Try BCGs.csv ---
+    # --- 1. Try BCGs.csv ---
+    bcgs = []
     bcg_df = read_bcg_csv(cluster, verbose=verbose)
     if not bcg_df.empty:
         bcg_df = select_bcgs(bcg_df)
-        bcgs = []
         for _, row in bcg_df.iterrows():
             bcgs.append(BCG.from_dataframe_row(row))
-        if bcgs:
-            if verbose:
-                print(f"Loaded {len(bcgs)} BCG(s) from BCGs.csv.")
-            return bcgs
+        if bcgs and verbose:
+            print(f"Loaded {len(bcgs)} BCG(s) from BCGs.csv.")
 
-    # --- 3. Try redMaPPer ---
-    if cluster.coords is not None:
+    # --- 2. Try redMaPPer ---
+    if not bcgs and cluster.coords is not None:
         rm_tuples = get_redmapper_bcg_candidates(
             cluster.coords, radius_arcmin=radius_arcmin, verbose=verbose,
         )
         if rm_tuples:
-            bcgs = []
             for i, (ra, dec, z, prob) in enumerate(rm_tuples, start=1):
                 bcgs.append(BCG(
                     bcg_id=i, ra=ra, dec=dec, z=z,
@@ -476,20 +459,48 @@ def get_BCGs(
                 ))
             if verbose:
                 print(f"Loaded {len(bcgs)} BCG(s) from redMaPPer query.")
-            return bcgs
 
-    # --- 4. Fallback: cluster center ---
-    if cluster.coords is None:
-        raise ValueError(
-            f"Cannot retrieve BCGs for {cluster.identifier!r}: "
-            "no config, CSV, redMaPPer match, or cluster coordinates."
-        )
-    ra = float(cluster.coords.ra.deg)
-    dec = float(cluster.coords.dec.deg)
-    z = float(cluster.redshift) if cluster.redshift is not None else None
-    if verbose:
-        print("No BCG candidates found; using cluster center as fallback.")
-    return [BCG(bcg_id=1, ra=ra, dec=dec, z=z, rank=1, probability=1.0, label="1")]
+    # --- 3. Fallback: cluster center ---
+    if not bcgs:
+        if cluster.coords is None:
+            raise ValueError(
+                f"Cannot retrieve BCGs for {cluster.identifier!r}: "
+                "no CSV, redMaPPer match, or cluster coordinates."
+            )
+        ra = float(cluster.coords.ra.deg)
+        dec = float(cluster.coords.dec.deg)
+        z = float(cluster.redshift) if cluster.redshift is not None else None
+        if verbose:
+            print("No BCG candidates found; using cluster center as fallback.")
+        bcgs = [BCG(bcg_id=1, ra=ra, dec=dec, z=z, rank=1, probability=1.0, label="1")]
+
+    # --- 4. Supplement with manual BCGs from config.yaml ---
+    cfg = load_config(cluster.cluster_path)
+    bcg_section = cfg.get("BCGs", cfg.get("bcgs", None))
+    if bcg_section and isinstance(bcg_section, dict):
+        existing = {b.bcg_id: b for b in bcgs}
+        for bcg_id, bcg_cfg in bcg_section.items():
+            if not isinstance(bcg_cfg, dict) or "ra" not in bcg_cfg or "dec" not in bcg_cfg:
+                continue
+            bid = int(bcg_id)
+            manual = BCG.from_config(bid, bcg_cfg)
+            if bid in existing:
+                # Config overrides, but inherit missing fields from seed
+                seed = existing[bid]
+                if manual.z is None:
+                    manual.z = seed.z
+                if manual.sigma_z is None:
+                    manual.sigma_z = seed.sigma_z
+                if manual.probability is None:
+                    manual.probability = seed.probability
+                # Replace in list
+                bcgs = [manual if b.bcg_id == bid else b for b in bcgs]
+            else:
+                bcgs.append(manual)
+                if verbose:
+                    print(f"Added manual BCG {bid} ('{manual.label}') from config.yaml.")
+
+    return bcgs
 
 
 # ---------------------------------------------------------------
