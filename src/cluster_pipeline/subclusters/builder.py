@@ -18,7 +18,7 @@ Configuration sources (highest to lowest priority)
 1. Per-subcluster kwarg  (``color_2``, ``radius_3``)
 2. Global kwarg          (``color``, ``radius``)
 3. config.yaml value     (``config["subclusters"]``)
-4. Code default          (``DEFAULT_COLORS``, ``DEFAULT_RADIUS_MPC``, etc.)
+4. Code default          (``DEFAULT_COLORS``, ``DEFAULT_RADIUS_ARCMIN``, etc.)
 
 BCG sources (first match wins)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -39,7 +39,7 @@ from cluster_pipeline.models.bcg import BCG
 from cluster_pipeline.models.subcluster import Subcluster
 from cluster_pipeline.io.catalogs import read_bcg_csv
 from cluster_pipeline.config import load_config
-from cluster_pipeline.constants import DEFAULT_COLORS, DEFAULT_LABELS, DEFAULT_RADIUS_MPC
+from cluster_pipeline.constants import DEFAULT_COLORS, DEFAULT_LABELS, DEFAULT_RADIUS_ARCMIN
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def build_subclusters(
             "Subcluster %d  BCG=%d  label='%s'  color='%s'  "
             "radius=%.2f Mpc  z_range=%s",
             idx + 1, sc.bcg_id, sc.label, sc.color,
-            sc.radius_mpc, sc.z_range,
+            sc.radius_arcmin, sc.z_range,
         )
 
     # -- Apply group assignments ------------------------------------
@@ -259,17 +259,17 @@ def _build_one(
 
     label = _resolve_field("label", idx, bcg_id, sc_cfg, kwargs, default=label_default)
     color = _resolve_field("color", idx, bcg_id, sc_cfg, kwargs, default=color_default)
-    radius_mpc = _resolve_field(
-        "radius_mpc", idx, bcg_id, sc_cfg, kwargs, default=DEFAULT_RADIUS_MPC,
+    radius_arcmin = _resolve_field(
+        "radius_arcmin", idx, bcg_id, sc_cfg, kwargs, default=DEFAULT_RADIUS_ARCMIN,
     )
-    # Also accept "radius" as a kwarg alias for "radius_mpc"
-    if radius_mpc == DEFAULT_RADIUS_MPC:
+    # Also accept "radius" as a kwarg alias for "radius_arcmin"
+    if radius_arcmin == DEFAULT_RADIUS_ARCMIN:
         radius_alt = _resolve_field(
             "radius", idx, bcg_id, sc_cfg, kwargs, default=None,
         )
         if radius_alt is not None:
-            radius_mpc = radius_alt
-    radius_mpc = float(radius_mpc)
+            radius_arcmin = radius_alt
+    radius_arcmin = float(radius_arcmin)
 
     z_range = _resolve_z_range(idx, bcg_id, sc_cfg, kwargs, cluster)
 
@@ -278,7 +278,7 @@ def _build_one(
         primary_bcg=primary_bcg,
         label=str(label),
         color=str(color),
-        radius_mpc=radius_mpc,
+        radius_arcmin=radius_arcmin,
         z_range=z_range,
     )
 
@@ -492,7 +492,7 @@ def _resolve_field(
     Parameters
     ----------
     field : str
-        Field name (e.g., ``"color"``, ``"radius_mpc"``).
+        Field name (e.g., ``"color"``, ``"radius_arcmin"``).
     idx : int
         Zero-based position index (for list-valued global kwargs).
     bcg_id : int

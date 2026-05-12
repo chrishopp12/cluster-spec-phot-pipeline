@@ -176,7 +176,7 @@ def filter_members_by_config(member_groups, subclusters, spec=True, verbose=Fals
     member_groups : list of pd.DataFrame
         Region-assigned galaxy tables, each with 'RA', 'Dec', and optionally 'z'.
     subclusters : list[Subcluster]
-        List of Subcluster objects with ``z_range`` and ``radius_mpc`` attributes.
+        List of Subcluster objects with ``z_range`` and ``radius_arcmin`` attributes.
     spec : bool, optional
         If True, apply redshift cut as well as radius.
 
@@ -193,7 +193,7 @@ def filter_members_by_config(member_groups, subclusters, spec=True, verbose=Fals
             continue
 
         zmin, zmax = subclusters[i].z_range
-        max_radius = subclusters[i].radius_mpc
+        max_radius = subclusters[i].radius_arcmin
 
         coords = make_skycoord(df['RA'].values, df['Dec'].values)
         sep = coords.separation(centers[i]).arcmin

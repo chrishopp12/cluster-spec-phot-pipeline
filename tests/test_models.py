@@ -134,7 +134,7 @@ class TestSubcluster:
             primary_bcg=bcgs[1],
             label="Main",
             color="white",
-            radius_mpc=2.5,
+            radius_arcmin=2.5,
             z_range=(0.42, 0.46),
         )
         assert sub.bcg_id == 1
@@ -196,7 +196,7 @@ class TestSubcluster:
             "bcg_id": 1,
             "label": "Main",
             "color": "white",
-            "radius_mpc": 2.0,
+            "radius_arcmin": 2.0,
             "z_range": [0.42, 0.46],
             "border_bcg_id": 5,
             "member_bcg_ids": [1, 5],
@@ -214,7 +214,7 @@ class TestSubcluster:
         sub = Subcluster(
             bcg_id=1, primary_bcg=bcgs[1], border_bcg=bcgs[5],
             member_bcgs=[bcgs[1], bcgs[5]],
-            label="Main", color="white", radius_mpc=2.5,
+            label="Main", color="white", radius_arcmin=2.5,
             z_range=(0.42, 0.46),
             group_id="A", group_members=(1, 5),
         )

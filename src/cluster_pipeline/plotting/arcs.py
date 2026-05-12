@@ -285,7 +285,7 @@ def plot_bcg_region_arcs(
         colors = [sub.display_color if hasattr(sub, 'display_color') else sub.get('group_color') for sub in subcluster_configs]
 
     centers = [sub.region_center if hasattr(sub, 'region_center') else sub['center'] for sub in subcluster_configs]
-    radii = [sub.radius_mpc if hasattr(sub, 'radius_mpc') else sub['radius'] for sub in subcluster_configs]
+    radii = [sub.radius_arcmin if hasattr(sub, 'radius_arcmin') else sub['radius'] for sub in subcluster_configs]
 
     # Build region segment list for each BCG (segment = pair of (RA, Dec))
     bcg_regions = assign_subcluster_regions(subcluster_configs)
