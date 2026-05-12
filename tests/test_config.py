@@ -43,8 +43,8 @@ def test_round_trip(tmp_path):
             2: {"ra": 201.792, "dec": 53.801, "z": 0.438},
         },
         "subclusters": [
-            {"bcg_id": 1, "label": "1", "color": "white", "radius_mpc": 2.0},
-            {"bcg_id": 2, "label": "2", "color": "tab:green", "radius_mpc": 2.5},
+            {"bcg_id": 1, "label": "1", "color": "white", "radius_arcmin": 2.0},
+            {"bcg_id": 2, "label": "2", "color": "tab:green", "radius_arcmin": 2.5},
         ],
         "xray": {
             "filename": "comb-adaptimsky-400-1100.fits",
