@@ -139,9 +139,10 @@ def _load_bcgs(
 
     Resolution order:
 
-    1. ``bcgs`` argument (pre-built objects).
-    2. ``config["bcgs"]`` section (YAML definitions).
-    3. ``BCGs.csv`` on disk.
+    1. ``bcgs`` argument (pre-built objects) — used as-is.
+    2. ``BCGs.csv`` on disk (redMaPPer seed BCGs), then
+       ``config["bcgs"]`` entries layered on top (supplements or
+       overrides by ``bcg_id``).
 
     Parameters
     ----------
@@ -167,47 +168,42 @@ def _load_bcgs(
         log.debug("Using %d BCG(s) passed directly.", len(bcgs))
         return {b.bcg_id: b for b in bcgs}
 
-    # Source 2: config.yaml bcgs section
+    # Source 2: BCGs.csv (redMaPPer seed BCGs + any previously matched data)
+    lookup = {}
+    try:
+        bcg_df = read_bcg_csv(cluster)
+        if not bcg_df.empty:
+            for _, row in bcg_df.iterrows():
+                b = BCG.from_dataframe_row(row)
+                lookup[b.bcg_id] = b
+            log.debug("Loaded %d BCG(s) from %s", len(lookup), cluster.bcg_file)
+    except Exception:
+        pass  # BCGs.csv may not exist yet on first run
+
+    # Source 3: config.yaml bcgs section (supplements/overrides BCGs.csv)
     bcg_section = config.get("bcgs", {})
-    if bcg_section:
-        log.debug("Loading BCGs from config.yaml 'bcgs' section.")
-        lookup = {}
-        for bid, bcfg in bcg_section.items():
-            lookup[int(bid)] = BCG.from_config(int(bid), bcfg)
+    for bid, bcfg in bcg_section.items():
+        bid = int(bid)
+        if bid in lookup:
+            # Config overrides CSV — but fill missing fields from existing
+            existing = lookup[bid]
+            manual = BCG.from_config(bid, bcfg)
+            if manual.z is None:
+                manual.z = existing.z
+            if manual.sigma_z is None:
+                manual.sigma_z = existing.sigma_z
+            if manual.probability is None:
+                manual.probability = existing.probability
+            lookup[bid] = manual
+        else:
+            lookup[bid] = BCG.from_config(bid, bcfg)
+            log.debug("Added manual BCG %d from config.yaml", bid)
 
-        # Enrich with matched data from BCGs.csv (redshifts, photometry)
-        try:
-            bcg_df = read_bcg_csv(cluster)
-            if not bcg_df.empty:
-                for _, row in bcg_df.iterrows():
-                    bid = int(row.get("BCG_priority", 0))
-                    if bid in lookup:
-                        bcg = lookup[bid]
-                        # Fill missing fields from CSV (CSV has matched spec+phot)
-                        if bcg.z is None and pd.notna(row.get("z")):
-                            bcg.z = float(row["z"])
-                        if bcg.sigma_z is None and pd.notna(row.get("sigma_z")):
-                            bcg.sigma_z = float(row["sigma_z"])
-                        if bcg.probability is None and pd.notna(row.get("BCG_probability")):
-                            bcg.probability = float(row["BCG_probability"])
-                log.debug("Enriched BCGs with matched data from BCGs.csv")
-        except Exception:
-            pass  # BCGs.csv may not exist yet on first run
-
-        return lookup
-
-    # Source 3: BCGs.csv
-    log.debug("Loading BCGs from %s", cluster.bcg_file)
-    bcg_df = read_bcg_csv(cluster)
-    if bcg_df.empty:
+    if not lookup:
         raise ValueError(
             f"No BCGs found.  Checked: bcgs argument, config['bcgs'], "
             f"and {cluster.bcg_file}."
         )
-    lookup = {}
-    for _, row in bcg_df.iterrows():
-        b = BCG.from_dataframe_row(row)
-        lookup[b.bcg_id] = b
     return lookup
 
 
