@@ -48,8 +48,8 @@ class Subcluster:
         Display label (e.g., "1", "Main", "A").
     color : str
         Matplotlib color for plots.
-    radius_mpc : float
-        Search radius in Mpc.
+    radius_arcmin : float
+        Member-assignment radius in arcminutes.
     z_range : tuple[float, float]
         Redshift range (z_min, z_max) for member selection.
 
@@ -82,7 +82,7 @@ class Subcluster:
     # Display / analysis parameters
     label: str = ""
     color: str = "white"
-    radius_mpc: float = 2.5
+    radius_arcmin: float = 2.5
     z_range: tuple[float, float] = (0.0, 1.0)
 
     # Group info (for combined subclusters)
@@ -165,7 +165,7 @@ class Subcluster:
         cfg : dict
             One entry from the ``subclusters`` list in config.yaml.
             Required keys: ``bcg_id``.
-            Optional: ``label``, ``color``, ``radius_mpc``, ``z_range``,
+            Optional: ``label``, ``color``, ``radius_arcmin``, ``z_range``,
             ``border_bcg_id``, ``group_id``, ``group_members``, etc.
         bcgs : dict[int, BCG]
             Lookup of all BCGs by bcg_id.
@@ -195,7 +195,7 @@ class Subcluster:
             member_bcgs=members,
             label=cfg.get("label", str(bcg_id)),
             color=cfg.get("color", "white"),
-            radius_mpc=cfg.get("radius_mpc", 2.5),
+            radius_arcmin=cfg.get("radius_arcmin", 2.5),
             z_range=z_range,
             group_id=cfg.get("group_id"),
             group_members=group_members,
@@ -210,7 +210,7 @@ class Subcluster:
             "bcg_id": self.bcg_id,
             "label": self.label,
             "color": self.color,
-            "radius_mpc": self.radius_mpc,
+            "radius_arcmin": self.radius_arcmin,
             "z_range": list(self.z_range),
         }
         if self.border_bcg is not None and self.border_bcg.bcg_id != self.bcg_id:
