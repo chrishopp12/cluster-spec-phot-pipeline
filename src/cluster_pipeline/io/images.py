@@ -42,8 +42,8 @@ if TYPE_CHECKING:
 def get_optical_image(
         cluster: "Cluster",
         fov: float,
-        ra_offset: float = 0.0,
-        dec_offset: float = 0.0,
+        ra_offset: float | None = None,
+        dec_offset: float | None = None,
         check_validity: bool = True
     ) -> str | None:
     """Retrieve an optical image from HiPS surveys and save as FITS.
@@ -59,10 +59,10 @@ def get_optical_image(
         Cluster object providing coordinates and ``photometry_path``.
     fov : float
         Field of view in arcminutes (converted to degrees internally).
-    ra_offset : float, optional
-        RA offset in arcminutes (default 0).
-    dec_offset : float, optional
-        Dec offset in arcminutes (default 0).
+    ra_offset : float or None, optional
+        RA offset in arcminutes. Defaults to ``cluster.ra_offset``.
+    dec_offset : float or None, optional
+        Dec offset in arcminutes. Defaults to ``cluster.dec_offset``.
     check_validity : bool, optional
         If True, reject images that are mostly empty (default True).
 
@@ -71,8 +71,12 @@ def get_optical_image(
     str or None
         Path to the saved FITS file, or None if no valid image was found.
     """
-    ra_offset_deg = ra_offset/ 60
-    dec_offset_deg = dec_offset/ 60
+    if ra_offset is None:
+        ra_offset = cluster.ra_offset
+    if dec_offset is None:
+        dec_offset = cluster.dec_offset
+    ra_offset_deg = ra_offset / 60
+    dec_offset_deg = dec_offset / 60
     fov_deg = fov/ 60
 
     # Query prioritized surveys
