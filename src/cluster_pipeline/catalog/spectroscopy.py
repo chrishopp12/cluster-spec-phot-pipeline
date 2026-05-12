@@ -63,12 +63,12 @@ from astroquery.ipac.ned import Ned
 from astroquery.utils.tap.core import TapPlus
 
 from cluster_pipeline.models.cluster import Cluster
+from cluster_pipeline.constants import DEFAULT_SEARCH_RADIUS_ARCMIN
 from cluster_pipeline.utils.coordinates import make_skycoord
 
 # ------------------------------------
 # Constants
 # ------------------------------------
-DEFAULT_RADIUS_ARCMIN = 10.0
 DEFAULT_TOLERANCE_DEG = 2.0 / 3600.0  # 2 arcsec
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_INITIAL_WAIT = 5  # seconds
@@ -89,7 +89,7 @@ def run_spectroscopy(
     cluster: Cluster,
     *,
     sources: list[str] | None = None,
-    radius_arcmin: float = DEFAULT_RADIUS_ARCMIN,
+    radius_arcmin: float = DEFAULT_SEARCH_RADIUS_ARCMIN,
     tolerance_deg: float = DEFAULT_TOLERANCE_DEG,
     casjobs_user: str | None = None,
     casjobs_password: str | None = None,
