@@ -25,6 +25,7 @@ from cluster_pipeline.constants import (
     DEFAULT_FOV_FULL_ARCMIN,
     DEFAULT_RA_OFFSET_ARCMIN,
     DEFAULT_DEC_OFFSET_ARCMIN,
+    DEFAULT_SEARCH_RADIUS_ARCMIN,
     DEFAULT_SURVEY,
     DEFAULT_COLOR_TYPE,
     DEFAULT_PHOT_LEVELS,
@@ -200,6 +201,7 @@ def _apply_defaults(values: dict[str, Any]) -> None:
         "fov_full": DEFAULT_FOV_FULL_ARCMIN,
         "ra_offset": DEFAULT_RA_OFFSET_ARCMIN,
         "dec_offset": DEFAULT_DEC_OFFSET_ARCMIN,
+        "search_radius": DEFAULT_SEARCH_RADIUS_ARCMIN,
         "survey": DEFAULT_SURVEY,
         "color_type": DEFAULT_COLOR_TYPE,
         "phot_levels": DEFAULT_PHOT_LEVELS,
@@ -216,7 +218,8 @@ def _apply_defaults(values: dict[str, Any]) -> None:
 def _apply_values(cluster: Cluster, values: dict[str, Any]) -> None:
     """Set values on the Cluster object with type coercion."""
     # Float fields
-    for key in ("ra", "dec", "ra_offset", "dec_offset", "redshift", "redshift_err",
+    for key in ("ra", "dec", "ra_offset", "dec_offset", "search_radius",
+                "redshift", "redshift_err",
                 "z_min", "z_max", "richness", "richness_err", "fov", "fov_full",
                 "psf", "bandwidth"):
         if key in values:
