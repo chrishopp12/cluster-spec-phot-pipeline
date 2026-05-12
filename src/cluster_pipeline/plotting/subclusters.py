@@ -50,6 +50,15 @@ def _get_optical(cluster):
     return get_optical_image(cluster, cluster.fov)
 
 
+def _xray_or_none(cluster):
+    """Return cluster.xray_file if it exists on disk, else None.
+
+    Lets optical-only runs skip X-ray contour overlays gracefully.
+    """
+    path = getattr(cluster, "xray_file", None)
+    return path if path and os.path.isfile(path) else None
+
+
 # -- Figures and Plots --
 def plot_subcluster_members_and_regions(
     cluster,
@@ -113,8 +122,10 @@ def plot_subcluster_members_and_regions(
 
     if combined_configs is not None:
         colors = [sub.color for sub in combined_configs]
+        legend_subs = combined_configs
     else:
         colors = [sub.color for sub in subclusters]
+        legend_subs = subclusters
 
     if spec_groups_combined is not None:
         spec_groups = spec_groups_combined
@@ -138,7 +149,7 @@ def plot_subcluster_members_and_regions(
         fig=fig, ax=ax,
         show_plots=False,
         save_plots=False,
-        xray_fits_file=cluster.xray_file,
+        xray_fits_file=_xray_or_none(cluster),
         photometric_file=cluster.get_phot_file(),
         bcg_file=cluster.bcg_file,
         **subcluster_kwargs
@@ -153,7 +164,10 @@ def plot_subcluster_members_and_regions(
                          edgecolors=color, facecolors=color, linewidths=1.2, zorder=11,
                          transform=ax.get_transform('icrs'))
         scatter_handles.append(sc1)
-        labels.append(f"Subcluster {i+1}")
+        # Use the subcluster's display_label so panel-specific labels
+        # (e.g. "1a", "1b") flow through from config.yaml
+        sub_label = legend_subs[i].display_label if i < len(legend_subs) else str(i + 1)
+        labels.append(f"Subcluster {sub_label}")
         if phot_groups is not None:
             phot = phot_groups[i]
             ax.scatter(phot['RA'], phot['Dec'], s=12,
@@ -284,7 +298,7 @@ def plot_redshift_and_subclusters_figure(
                                         cluster=cluster,
                                         ax=ax1, fig=fig,
                                         z_low=cluster.z_min, z_high=cluster.z_max,
-                                        xray_fits_file=cluster.xray_file,
+                                        xray_fits_file=_xray_or_none(cluster),
                                         photometric_file=cluster.get_phot_file(),
                                         bcg_file=cluster.bcg_file,
                                         show_plots=False,
@@ -632,7 +646,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
                                         cluster=cluster,
                                         ax=ax1, fig=fig,
                                         z_low=cluster.z_min, z_high=cluster.z_max,
-                                        xray_fits_file=cluster.xray_file,
+                                        xray_fits_file=_xray_or_none(cluster),
                                         photometric_file=cluster.get_phot_file(),
                                         bcg_file=cluster.bcg_file,
                                         scatter_cmap=cmap,
@@ -846,7 +860,7 @@ def plot_2panel_optical_contours(
         fig=fig, ax=ax2,
         show_plots=False,
         save_plots=False,
-        xray_fits_file=cluster.xray_file,
+        xray_fits_file=_xray_or_none(cluster),
         photometric_file=cluster.get_phot_file(),
         bcg_file=cluster.bcg_file,
         show_legend=False,
@@ -976,7 +990,7 @@ def plot_3panel_optical_subclusters_figure(
         fig=fig, ax=ax2,
         show_plots=False,
         save_plots=False,
-        xray_fits_file=cluster.xray_file,
+        xray_fits_file=_xray_or_none(cluster),
         photometric_file=cluster.get_phot_file(),
         bcg_file=cluster.bcg_file,
         show_legend=False,
@@ -1258,7 +1272,7 @@ def plot_subcluster_regions_and_histograms(
         ax.yaxis.set_major_locator(MultipleLocator(2))
         # ax.yaxis.set_major_locator(MaxNLocator(integer=True))
         ax.xaxis.set_major_formatter(FormatStrFormatter('%.3f'))
-        ax.annotate(f"Subcluster {i+1}\nN = {len(zs)}\n$\\sigma_v$ = {round(sigma_v, -1):.0f} km/s",
+        ax.annotate(f"Subcluster {sub.display_label}\nN = {len(zs)}\n$\\sigma_v$ = {round(sigma_v, -1):.0f} km/s",
                     xy=(0, 1), xycoords='axes fraction', xytext=(6, -6),
                     textcoords='offset points', ha='left', va='top',
                     fontsize=9, bbox=dict(facecolor='white', edgecolor='gray', alpha=0.7))
