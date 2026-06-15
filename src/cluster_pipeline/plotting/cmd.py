@@ -29,12 +29,10 @@ from matplotlib.ticker import MultipleLocator, FormatStrFormatter
 
 from astropy.wcs import WCS
 
-from scipy.stats import gaussian_kde
-
 from cluster_pipeline.utils import get_color_mag_functions, split_members_by_spec
 from cluster_pipeline.utils.coordinates import skycoord_from_df
 from cluster_pipeline.io.catalogs import get_redseq_filename
-from cluster_pipeline.plotting.common import finalize_figure
+from cluster_pipeline.plotting.common import finalize_figure, make_simple_wcs, evaluate_kde_grid
 from cluster_pipeline.constants import DEFAULT_BANDWIDTH, DEFAULT_KDE_GRID_SIZE, DEFAULT_CMAP_DENSITY, COL_RA, COL_DEC, COL_Z
 
 if TYPE_CHECKING:
@@ -286,12 +284,7 @@ def plot_spatial(
     dec_min = phot_coords.dec.deg.min()
 
     # Define WCS
-    nx, ny = 1000, 1000
-    wcs = WCS(naxis=2)
-    wcs.wcs.crpix = [nx / 2, ny / 2]
-    wcs.wcs.cdelt = [-(ra_max - ra_min) / nx, (dec_max - dec_min) / ny]
-    wcs.wcs.crval = [(ra_max + ra_min) / 2, (dec_max + dec_min) / 2]
-    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    wcs = make_simple_wcs(ra_min, ra_max, dec_min, dec_max, 1000)
 
     # WCS-aware figure
     fig = plt.figure(figsize=(8, 8))
@@ -531,27 +524,10 @@ def plot_density_contours(
 
     npix = DEFAULT_KDE_GRID_SIZE
     if wcs is None:
-        nx, ny = npix, npix
-        wcs = WCS(naxis=2)
-        wcs.wcs.crpix = [nx / 2, ny / 2]
-        wcs.wcs.cdelt = [
-            -(ra.max() - ra.min()) / nx,
-            (dec.max() - dec.min()) / ny,
-        ]
-        wcs.wcs.crval = [(ra.max() + ra.min()) / 2, (dec.max() + dec.min()) / 2]
-        wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+        wcs = make_simple_wcs(ra.min(), ra.max(), dec.min(), dec.max(), npix)
 
     x, y = wcs.wcs_world2pix(ra, dec, 0)
-    xy = np.vstack([x, y])
-
-    # KDE
-    kde = gaussian_kde(xy, bw_method=bandwidth, weights=weights)
-
-    # Evaluation grid
-    x_grid = np.linspace(x.min(), x.max(), npix)
-    y_grid = np.linspace(y.min(), y.max(), npix)
-    x_mesh, y_mesh = np.meshgrid(x_grid, y_grid)
-    density = kde(np.vstack([x_mesh.ravel(), y_mesh.ravel()])).reshape(x_mesh.shape)
+    x_mesh, y_mesh, density = evaluate_kde_grid(x, y, weights, bandwidth, npix)
 
     # WCS-aware figure
     fig = plt.figure(figsize=(8, 8))

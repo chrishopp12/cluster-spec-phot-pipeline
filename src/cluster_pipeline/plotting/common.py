@@ -46,6 +46,8 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import astropy.units as u
+from astropy.wcs import WCS
+from scipy.stats import gaussian_kde
 
 from cluster_pipeline.utils import pop_prefixed_kwargs
 from cluster_pipeline.utils.coordinates import make_skycoord
@@ -128,6 +130,60 @@ def finalize_figure(
 
     if save_plots or show_plots:
         plt.close(fig)
+
+
+def make_simple_wcs(ra_min, ra_max, dec_min, dec_max, npix):
+    """Build a simple TAN (gnomonic) WCS spanning an RA/Dec box on an npix x npix grid.
+
+    Parameters
+    ----------
+    ra_min, ra_max, dec_min, dec_max : float
+        Bounding box of the field, in degrees.
+    npix : int
+        Number of pixels per side.
+
+    Returns
+    -------
+    astropy.wcs.WCS
+        A 2D WCS centered on the box.
+    """
+    wcs = WCS(naxis=2)
+    wcs.wcs.crpix = [npix / 2, npix / 2]
+    wcs.wcs.cdelt = [-(ra_max - ra_min) / npix, (dec_max - dec_min) / npix]
+    wcs.wcs.crval = [(ra_max + ra_min) / 2, (dec_max + dec_min) / 2]
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    return wcs
+
+
+def evaluate_kde_grid(x, y, weights, bandwidth, npix):
+    """Gaussian-KDE a 2D point set onto a regular npix x npix mesh.
+
+    The caller supplies ``x``/``y`` already in the desired coordinate space
+    (WCS pixels, tangent-plane offsets, ...); this evaluates the KDE over a grid
+    spanning the data extent. Callers handle any coordinate transform themselves.
+
+    Parameters
+    ----------
+    x, y : ndarray
+        Point coordinates in a common 2D space.
+    weights : ndarray or None
+        Per-point KDE weights.
+    bandwidth : float or str
+        ``bw_method`` passed to ``scipy.stats.gaussian_kde``.
+    npix : int
+        Grid resolution per side.
+
+    Returns
+    -------
+    x_mesh, y_mesh, density : ndarray
+        Meshgrid coordinates and evaluated density, each shape (npix, npix).
+    """
+    kde = gaussian_kde(np.vstack([x, y]), bw_method=bandwidth, weights=weights)
+    x_grid = np.linspace(x.min(), x.max(), npix)
+    y_grid = np.linspace(y.min(), y.max(), npix)
+    x_mesh, y_mesh = np.meshgrid(x_grid, y_grid)
+    density = kde(np.vstack([x_mesh.ravel(), y_mesh.ravel()])).reshape(x_mesh.shape)
+    return x_mesh, y_mesh, density
 
 
 def add_scalebar(

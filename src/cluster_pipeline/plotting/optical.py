@@ -41,7 +41,6 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from astropy.io import fits
 from astropy.wcs import WCS
-from scipy.stats import gaussian_kde
 
 from cluster_pipeline.utils import pop_prefixed_kwargs
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
@@ -51,6 +50,7 @@ from cluster_pipeline.plotting.common import (
     finalize_figure,
     add_scalebar,
     overlay_bcg_markers,
+    evaluate_kde_grid,
 )
 from cluster_pipeline.constants import DEFAULT_PSF_ARCSEC, DEFAULT_CONTOUR_LEVELS, DEFAULT_BANDWIDTH, DEFAULT_KDE_GRID_SIZE
 
@@ -286,13 +286,7 @@ def add_density_contours(
     y = (dec - dec0)
 
     # Kernel Density Estimation in RA/Dec
-    xy = np.vstack([x, y])
-    kde = gaussian_kde(xy, bw_method=contour_bandwidth, weights=weights)
-
-    ra_grid = np.linspace(x.min(), x.max(), DEFAULT_KDE_GRID_SIZE)
-    dec_grid = np.linspace(y.min(), y.max(), DEFAULT_KDE_GRID_SIZE)
-    ra_mesh, dec_mesh = np.meshgrid(ra_grid, dec_grid)
-    density = kde(np.vstack([ra_mesh.ravel(), dec_mesh.ravel()])).reshape(ra_mesh.shape)
+    ra_mesh, dec_mesh, density = evaluate_kde_grid(x, y, weights, contour_bandwidth, DEFAULT_KDE_GRID_SIZE)
 
     ra_mesh = ra_mesh / cosd0 + ra0
     dec_mesh = dec_mesh + dec0
