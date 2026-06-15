@@ -153,11 +153,11 @@ def _merge_source(
     """Merge values from a source dict, only filling keys not already set."""
     # Handle nested 'analysis' section from config.yaml
     if "analysis" in source and isinstance(source["analysis"], dict):
-        for k, v in source["analysis"].items():
-            if k not in values and v is not None:
-                values[k] = v
+        for key, val in source["analysis"].items():
+            if key not in values and val is not None:
+                values[key] = val
                 if verbose:
-                    print(f"  [{label}] {k}: {v}")
+                    print(f"  [{label}] {key}: {val}")
         source = {k: v for k, v in source.items() if k != "analysis"}
 
     # Handle nested 'xray' section

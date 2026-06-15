@@ -119,15 +119,15 @@ def merge_config(
     """
     merged = copy.deepcopy(yaml_config)
 
-    for key, value in cli_overrides.items():
-        if value is None:
+    for key, val in cli_overrides.items():
+        if val is None:
             continue
 
         # Recursive merge for nested dicts (e.g., xray settings)
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = merge_config(merged[key], value)
+        if isinstance(val, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_config(merged[key], val)
         else:
-            merged[key] = value
+            merged[key] = val
 
     return merged
 
