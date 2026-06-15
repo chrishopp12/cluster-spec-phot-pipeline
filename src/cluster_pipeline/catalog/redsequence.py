@@ -379,7 +379,7 @@ def fit_and_select_red_sequence(
     matched_df: pd.DataFrame,
     full_df: pd.DataFrame,
     *,
-    color_band: float = 0.2,
+    color_band: float = DEFAULT_COLOR_BAND,
     color_type: str = "g-r",
     survey: str = "Legacy",
     mag_min: float = DEFAULT_MAG_MIN,
