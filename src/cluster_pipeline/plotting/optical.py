@@ -410,20 +410,38 @@ def define_contours_fov(
     if z_fov.size == 0:
         raise ValueError("No X-ray data falls within the optical field of view.")
 
-    mean = float(z_fov.mean())
-    std = float(z_fov.std())
+    exposure_mask = np.isfinite(z) & (z > 0)
+    z_valid = z[exposure_mask]
+    if z_valid.size == 0:
+        raise ValueError("No valid (finite, non-zero) X-ray exposure pixels.")
+    med = float(np.median(z_valid))
+    mad = float(np.median(np.abs(z_valid - med)))
+    std = 1.4826 * mad
+    pmin = float(np.percentile(z_valid, 1.0))
+
+    z_fov_valid = z_fov[np.isfinite(z_fov) & (z_fov > 0)]
+    if z_fov_valid.size == 0:
+        raise ValueError(
+            "No valid X-ray pixels inside the optical FoV — "
+            "is the cluster center inside the X-ray exposure?"
+        )
+    pmax = float(z_fov_valid.max())
+
     if verbose:
         print("\n-------- X-ray Contours --------")
-        print(f"    Mean Intensity: {mean}")
-        print(f"Standard Deviation: {std}")
-        print(f"     Max Intensity: {z_fov.max()}")
-        print(f"     Min Intensity: {z_fov.min()}")
+        print(f"  Exposure pixels: {z_valid.size} / {z.size} "
+              f"({100*z_valid.size/z.size:.1f}%)")
+        print(f"           Median: {med:.4e}")
+        print(f"        sigma (1.48·MAD): {std:.4e}")
+        print(f"  pmin (1.0 pct, exposure): {pmin:.4e}")
+        print(f"  pmax (max in FoV):        {pmax:.4e}")
     if pedestal:
-        mean = pedestal  # Override mean if provided
+        # pedestal override
+        pmin = pedestal
 
     # Define contour levels
-    vmin = float(z_fov.min() + levels[0] * std)
-    vmax = float(z_fov.max() - levels[1] * std)
+    vmin = float(pmin + levels[0] * std)
+    vmax = float(pmax - levels[1] * std)
 
     if verbose:
         print(f"       Contour Min: {vmin}")
