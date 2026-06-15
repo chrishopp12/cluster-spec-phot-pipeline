@@ -42,7 +42,6 @@ from cluster_pipeline.plotting.common import finalize_figure
 from cluster_pipeline.plotting.optical import plot_optical
 from cluster_pipeline.plotting.arcs import plot_bcg_region_arcs
 from cluster_pipeline.utils import pop_prefixed_kwargs
-from cluster_pipeline.constants import DEFAULT_DPI
 
 
 def _get_optical(cluster):
@@ -192,13 +191,8 @@ def plot_subcluster_members_and_regions(
         legend = ax.legend(handles=scatter_handles, labels=labels, loc=legend_loc, fontsize=12, frameon=True)
         legend.set_zorder(20)
 
-    if save_plots and save_path is not None:
-        plt.tight_layout()
-        save_file = os.path.join(save_path, "subcluster_regions.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, bbox_inches='tight')
-    if show_plots:
-        plt.tight_layout()
-        plt.show()
+    plt.tight_layout()
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="subcluster_regions.pdf")
 
     return fig, ax
 
@@ -359,12 +353,8 @@ def plot_redshift_and_subclusters_figure(
         fig.subplots_adjust(hspace=0.08, top=0.96, bottom=0.07, left=0.08, right=0.95)
 
 
-    if save_path is not None and save_plots:
-        suffix = "_hor" if layout == "horizontal" else "_vert"
-        save_file = os.path.join(save_path, f"subcluster_z_scatter{suffix}.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, bbox_inches='tight')
-    if show_plots:
-        plt.show()
+    suffix = "_hor" if layout == "horizontal" else "_vert"
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename=f"subcluster_z_scatter{suffix}.pdf")
 
     return fig, ax1, ax2, sc
 
@@ -605,11 +595,7 @@ def plot_stacked_redshift_histograms(
         ax_all_z.add_artist(con)
 
 
-    if save_plots and save_path is not None:
-        save_file = os.path.join(save_path, "stacked_redshifts.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, bbox_inches='tight')
-    if show_plots:
-        plt.show()
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="stacked_redshifts.pdf")
 
     plot_stacked_velocity_histograms(vel_data,color=colors,show_plots=show_plots, save_plots=save_plots)
 
@@ -759,11 +745,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
         ax2.add_artist(con)
 
 
-    if save_plots and save_path is not None:
-        save_file = os.path.join(save_path, "redshifts_hist_hmap.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=DEFAULT_DPI)
-    if show_plots:
-        plt.show()
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="redshifts_hist_hmap.pdf")
 
 
 def plot_2panel_optical_contours(
@@ -877,13 +859,8 @@ def plot_2panel_optical_contours(
         fig.subplots_adjust(hspace=0.08, top=0.98, bottom=0.1, left=0.2, right=0.94)
 
 
-    # plt.tight_layout()
-    if save_path is not None and save_plots:
-        suffix = "_hor" if layout == "horizontal" else "_vert"
-        save_file = os.path.join(save_path, f"2panel_optical_contours{suffix}.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=DEFAULT_DPI)
-    if show_plots:
-        plt.show()
+    suffix = "_hor" if layout == "horizontal" else "_vert"
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename=f"2panel_optical_contours{suffix}.pdf")
 
     return fig, ax1, ax2
 
@@ -1034,12 +1011,8 @@ def plot_3panel_optical_subclusters_figure(
     else:
         fig.subplots_adjust(hspace=0.08, top=0.98, bottom=0.07, left=0.1, right=0.99)
 
-    if save_plots and save_path is not None:
-        suffix = "_hor" if layout == "horizontal" else "_vert"
-        save_file = os.path.join(save_path, f"cluster_3panel{suffix}.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, bbox_inches='tight')
-    if show_plots:
-        plt.show()
+    suffix = "_hor" if layout == "horizontal" else "_vert"
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename=f"cluster_3panel{suffix}.pdf")
 
     return fig, axes, handles, labels
 
@@ -1162,11 +1135,7 @@ def plot_combined_4panel_figure(
     cbar.update_ticks()
 
 
-    if save_plots and save_path is not None:
-        save_file = os.path.join(save_path, "combined_4panel.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, bbox_inches='tight')
-    if show_plots:
-        plt.show()
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="combined_4panel.pdf")
     return fig
 
 def plot_subcluster_regions_and_histograms(
@@ -1323,11 +1292,7 @@ def plot_subcluster_regions_and_histograms(
 
     fig.text(x_l, y_c, "Galaxy Counts", va='center', ha='center', rotation='vertical')
 
-    if save_plots and save_path is not None:
-        save_file = os.path.join(save_path, "subcluster_histograms.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=DEFAULT_DPI)
-    if show_plots:
-        plt.show()
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="subcluster_histograms.pdf")
     return fig
 
 
