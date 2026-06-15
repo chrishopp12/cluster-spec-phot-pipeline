@@ -405,7 +405,6 @@ def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, o
     if verbose:
         print(f"Identified {len(gaussians)} subclusters.")
 
-
     # -- Output subcluster stats --
     if output_folder is None:
         output_folder = cluster.redshift_path
@@ -423,6 +422,15 @@ def process_redshifts(cluster, z_min_field=0, z_max_field=1.5, input_csv=None, o
     stats_path_cluster = os.path.join(output_folder, "subcluster_stats_cluster.csv")
     stats_table_cluster.write(stats_path_cluster, format="csv", overwrite=True)
     print(f"Stats table written to {stats_path_cluster}")
+
+    # GMM model-selection BICs for the cluster-range fit
+    bics = fit_info.get("bics", [])
+    bic_path = os.path.join(output_folder, "gmm_bic.csv")
+    pd.DataFrame({
+        "n_components": list(range(1, len(bics) + 1)),
+        "bic": bics,
+    }).to_csv(bic_path, index=False)
+    print(f"GMM BICs written to {bic_path}")
 
 
 
