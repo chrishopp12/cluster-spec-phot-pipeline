@@ -28,6 +28,7 @@ Notes:
 
 from __future__ import annotations
 import re
+from typing import Any
 
 import numpy as np
 from astropy.coordinates import SkyCoord
@@ -415,7 +416,7 @@ def get_redmapper_cluster_info(
     *,
     radius_arcmin: float = 5.0,
     verbose: bool = True,
-) -> list[tuple[float, float, None, float | None]]:
+) -> dict[str, Any]:
     """
     Query redMaPPer via VizieR near a coordinate and return the closest cluster's info.
 

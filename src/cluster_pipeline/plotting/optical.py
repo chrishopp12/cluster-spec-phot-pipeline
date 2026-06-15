@@ -519,9 +519,6 @@ def plot_optical(
         The figure and axis.
     """
 
-    # optical_kwargs = pop_prefixed_kwargs(kwargs, 'optical')
-    # show_scalebar = optical_kwargs.get('show_scalebar', True)
-
     # --- Load optical image and WCS ---
     with fits.open(optical_image_file) as hdul:
         optical_image_data = hdul[0].data
