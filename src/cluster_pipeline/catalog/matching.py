@@ -56,6 +56,7 @@ COLUMNS_PHOT = [
     "lum_weight_g", "lum_weight_r", "lum_weight_i", "g_r", "r_i", "g_i",
 ]
 DEFAULT_TOL_ARCSEC = 3.0
+DEBLEND_PAIR_TOL_ARCSEC = 0.7 # Pair separation for the BCG NaN-rescue in _match_bcgs_phot.
 
 
 # ---------------------------------------------------------------
@@ -717,9 +718,10 @@ def _match_bcgs_phot(
         print("\n--- BCG Photometric Matching ---")
 
     for i, bcg in enumerate(bcgs):
+        bcg_coord = make_skycoord([bcg.ra], [bcg.dec])
+        sep_all = bcg_coord.separation(phot_coords)
+
         if verbose:
-            bcg_coord = make_skycoord([bcg.ra], [bcg.dec])
-            sep_all = bcg_coord.separation(phot_coords)
             _print_top_n_matches(
                 label="photometric", bcg_i=bcg.bcg_id,
                 ra_bcg=bcg.ra, dec_bcg=bcg.dec,
@@ -727,29 +729,68 @@ def _match_bcgs_phot(
                 cat_df=phot_df, n=n_print, source_col="phot_source",
             )
 
-        if sep_nn[i] < (match_tol_arcsec * u.arcsec):
-            matched_row = phot_df.iloc[int(nn_idx[i])]
-            # Add phot columns without overwriting BCG identity columns
-            for col in phot_df.columns:
-                if col in ("RA", "Dec", "BCG_priority", "BCG_probability"):
-                    continue
-                val = matched_row[col]
-                # Only set if not already present or is missing
-                if col not in rows[i] or rows[i][col] is None or (
-                    isinstance(rows[i].get(col), float) and pd.isna(rows[i][col])
-                ):
-                    rows[i][col] = val
-
+        if sep_nn[i] >= (match_tol_arcsec * u.arcsec):
             if verbose:
-                sep_as = sep_nn[i].arcsec
                 print(
-                    f"BCG {bcg.bcg_id} matched phot source at sep={sep_as:.2f}\", "
-                    f"source={matched_row.get('phot_source', 'N/A')}"
+                    f"BCG {bcg.bcg_id} has no phot match within {match_tol_arcsec}\". "
+                    f"Nearest at {sep_nn[i].arcsec:.2f}\"."
                 )
-        elif verbose:
+            continue
+
+        nn_i = int(nn_idx[i])
+        match_idx = nn_i
+        rescued = False
+
+        # NaN-NN rescue: Tractor occasionally registers a duplicate centroid right at the BCG position with all magnitudes NaN.
+        nn_mag_cols = [c for c in ("gmag", "rmag", "imag") if c in phot_df.columns]
+        nn_has_mag = nn_mag_cols and any(
+            pd.notna(phot_df.iloc[nn_i].get(c)) for c in nn_mag_cols
+        )
+        if not nn_has_mag:
+            sep_arcsec = sep_all.arcsec.ravel()
+            within_bcg = sep_arcsec < match_tol_arcsec
+            sep_pair = phot_coords[nn_i].separation(phot_coords).arcsec.ravel()
+            within_pair = sep_pair < DEBLEND_PAIR_TOL_ARCSEC
+            has_phot_mag = (
+                phot_df[nn_mag_cols].notna().any(axis=1).to_numpy()
+                if nn_mag_cols else np.zeros(len(phot_df), dtype=bool)
+            )
+            candidate_mask = within_bcg & within_pair & has_phot_mag
+            if candidate_mask.any():
+                candidate_idx = np.where(candidate_mask)[0]
+                # Pick the populated candidate closest to the BCG
+                best = int(candidate_idx[np.argmin(sep_arcsec[candidate_idx])])
+                match_idx = best
+                rescued = True
+                if verbose:
+                    best_mag = phot_df.iloc[best].get("rmag")
+                    best_mag_str = f"{best_mag:.2f}" if pd.notna(best_mag) else "NaN"
+                    print(
+                        f"BCG {bcg.bcg_id}: NN at sep="
+                        f"{sep_nn[i].arcsec:.2f}\" has all-NaN mags; "
+                        f"using populated sibling at sep="
+                        f"{sep_arcsec[best]:.2f}\" "
+                        f"({sep_pair[best]:.2f}\" from NN, rmag={best_mag_str})."
+                    )
+
+        matched_row = phot_df.iloc[match_idx]
+        # Add phot columns without overwriting BCG identity columns.
+        for col in phot_df.columns:
+            if col in ("RA", "Dec", "BCG_priority", "BCG_probability"):
+                continue
+            val = matched_row[col]
+            # Only set if not already present or is missing
+            if col not in rows[i] or rows[i][col] is None or (
+                isinstance(rows[i].get(col), float) and pd.isna(rows[i][col])
+            ):
+                rows[i][col] = val
+                setattr(bcg, col, val)
+
+        if verbose and not rescued:
+            sep_as = sep_nn[i].arcsec
             print(
-                f"BCG {bcg.bcg_id} has no phot match within {match_tol_arcsec}\". "
-                f"Nearest at {sep_nn[i].arcsec:.2f}\"."
+                f"BCG {bcg.bcg_id} matched phot source at sep={sep_as:.2f}\", "
+                f"source={matched_row.get('phot_source', 'N/A')}"
             )
 
     if verbose:

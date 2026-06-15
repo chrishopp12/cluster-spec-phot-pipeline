@@ -182,6 +182,7 @@ def _load_bcgs(
 
     # Source 3: config.yaml bcgs section (supplements/overrides BCGs.csv)
     bcg_section = config.get("bcgs", {})
+    config_only_bids: list[int] = []
     for bid, bcfg in bcg_section.items():
         bid = int(bid)
         if bid in lookup:
@@ -198,6 +199,16 @@ def _load_bcgs(
         else:
             lookup[bid] = BCG.from_config(bid, bcfg)
             log.debug("Added manual BCG %d from config.yaml", bid)
+            config_only_bids.append(bid)
+
+    # Warn if any manual BCGs exist in config.yaml but are missing from BCGs.csv.
+    if config_only_bids:
+        ids_str = ", ".join(str(b) for b in sorted(config_only_bids))
+        print(
+            f"WARNING: BCG(s) {ids_str} are in config.yaml but not in BCGs.csv. "
+            f"Bisector geometry will use them, but plots that read BCGs.csv "
+            f"will not show them. Re-run the 'matching' stage to refresh BCGs.csv."
+        )
 
     if not lookup:
         raise ValueError(
