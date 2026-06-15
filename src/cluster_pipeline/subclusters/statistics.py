@@ -229,8 +229,9 @@ def make_stats_table(
             sig_levels = anderson_res.significance_level
             crit_values = anderson_res.critical_values
 
-            anderson_res2 = scipy.stats.anderson(z_subset, dist="norm", method=scipy.stats.MonteCarloMethod(n_resamples=50_000))
-            ad_p_value2 = anderson_res2.pvalue
+            # Monte-Carlo AD-normality p-value. Uses goodness_of_fit (scipy >=1.10)
+            gof_res2 = scipy.stats.goodness_of_fit(scipy.stats.norm, z_subset, statistic="ad")
+            ad_p_value2 = gof_res2.pvalue
 
             ad_significance = None
             for level, crit in zip(sig_levels[::-1], crit_values[::-1]):  # descending order
