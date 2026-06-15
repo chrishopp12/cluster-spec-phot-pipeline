@@ -41,6 +41,11 @@ from cluster_pipeline.utils import to_float_or_none
 from cluster_pipeline.constants import DEFAULT_SIMBAD_TIMEOUT
 
 
+def _noop(*args, **kwargs):
+    """No-op stand-in for print(), used to gate diagnostics behind a verbose flag."""
+    pass
+
+
 def _format_simbad_name(cluster_name: str) -> str:
     """Map a cluster name to a SIMBAD-resolvable identifier.
 
@@ -57,7 +62,7 @@ def _format_simbad_name(cluster_name: str) -> str:
     return cluster_name
 
 
-def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
+def simbad_coord_lookup(simbad_name: str, verbose: bool = True) -> SkyCoord:
     """
     Attempts to resolve coordinates from SIMBAD by name.
 
@@ -65,6 +70,8 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
     ----------
     simbad_name : str
         Name string for SIMBAD lookup.
+    verbose : bool
+        If True, print progress diagnostics. [default: True]
 
     Returns
     -------
@@ -76,9 +83,10 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
     Exception
         If lookup fails.
     """
+    log = print if verbose else _noop
 
     try:
-        print(f"Trying Simbad for {simbad_name}...")
+        log(f"Trying Simbad for {simbad_name}...")
         simbad = Simbad()
         simbad.TIMEOUT = DEFAULT_SIMBAD_TIMEOUT
         simbad.add_votable_fields("coordinates")
@@ -92,7 +100,7 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
                 ra = result['ra'][0]
                 dec = result['dec'][0]
 
-                print(f"Found in SIMBAD: RA = {ra}, Dec = {dec}")
+                log(f"Found in SIMBAD: RA = {ra}, Dec = {dec}")
                 return SkyCoord(ra=ra, dec=dec, unit='deg')
 
             elif 'RA' in result.colnames and 'DEC' in result.colnames:
@@ -100,15 +108,15 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
                 dec = result['DEC'][0]
 
             else:
-                print(f"No usable RA/DEC columns found in Simbad result for {simbad_name}")
-                print(f"Columns returned: {result.colnames}")
+                log(f"No usable RA/DEC columns found in Simbad result for {simbad_name}")
+                log(f"Columns returned: {result.colnames}")
                 raise ValueError("No usable RA/DEC columns in Simbad result")
 
-            print(f"Found in SIMBAD: RA = {ra}, Dec = {dec}")
+            log(f"Found in SIMBAD: RA = {ra}, Dec = {dec}")
             return SkyCoord(ra=ra, dec=dec, unit='deg')
 
     except Exception as e:
-        print(f"SIMBAD lookup failed ({type(e).__name__}): {e}")
+        log(f"SIMBAD lookup failed ({type(e).__name__}): {e}")
         raise
 
 
@@ -130,7 +138,7 @@ def get_name(identifier: str) -> str:
     return str(identifier).strip()
 
 
-def get_coordinates(identifier: str) -> SkyCoord:
+def get_coordinates(identifier: str, verbose: bool = True) -> SkyCoord:
     """
     Attempts to resolve a cluster name to coordinates using NED or SIMBAD.
 
@@ -138,6 +146,8 @@ def get_coordinates(identifier: str) -> SkyCoord:
     ----------
     identifier : str
         Cluster ID (XMM OBS_ID, 4-digit identifier, or custom), or cluster name.
+    verbose : bool
+        If True, print progress diagnostics. [default: True]
 
     Returns
     -------
@@ -149,39 +159,40 @@ def get_coordinates(identifier: str) -> SkyCoord:
     ValueError
         If coordinates cannot be found.
     """
+    log = print if verbose else _noop
 
     cluster_name = get_name(identifier)
 
-    print(f"Resolving coordinates for {cluster_name}...")
+    log(f"Resolving coordinates for {cluster_name}...")
     # First try NED
     try:
-        print(f"Trying NED for {cluster_name}...")
+        log(f"Trying NED for {cluster_name}...")
         result = Ned.query_object(cluster_name)
 
         if result is not None and len(result) > 0:
             ra = result['RA'][0]
             dec = result['DEC'][0]
 
-            print(f"Found in NED: RA = {ra}, Dec = {dec}")
+            log(f"Found in NED: RA = {ra}, Dec = {dec}")
             return SkyCoord(ra=ra, dec=dec, unit='deg')
 
     except Exception as e:
-        print(f"NED lookup failed ({type(e).__name__}): {e}")
+        log(f"NED lookup failed ({type(e).__name__}): {e}")
 
     # Format for Simbad
     simbad_name = _format_simbad_name(cluster_name)
 
     try:
-        coord = simbad_coord_lookup(simbad_name)
+        coord = simbad_coord_lookup(simbad_name, verbose=verbose)
         return coord
 
     except Exception as e:
-        print(f"{e}")
+        log(f"{e}")
 
     raise ValueError(f"Coordinates for {cluster_name} could not be found.")
 
 
-def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
+def get_redshift(identifier: str, BCGs: list[tuple] | None = None, verbose: bool = True) -> float:
     """
     Attempts to retrieve the redshift of a cluster from NED or Simbad,
     falling back to BCG data if necessary.
@@ -192,6 +203,8 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
         Observation ID, short cluster name, or full RMJ name.
     BCGs : list of tuples
         List of BCG coordinates and redshifts, where each tuple is (ra, dec, z).
+    verbose : bool
+        If True, print progress diagnostics. [default: True]
 
     Returns
     -------
@@ -203,13 +216,14 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
     ValueError
         If redshift cannot be found.
     """
+    log = print if verbose else _noop
 
     cluster_name = get_name(identifier)
-    print(f"Retrieving redshift for {cluster_name}...")
+    log(f"Retrieving redshift for {cluster_name}...")
 
     # Try NED
     try:
-        print(f"Trying NED for redshift of {cluster_name}...")
+        log(f"Trying NED for redshift of {cluster_name}...")
         ned_result = Ned.query_object(cluster_name)
 
         if ned_result is not None and len(ned_result) > 0:
@@ -217,7 +231,7 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
             if 'Redshift' in ned_result.colnames:
                 z = ned_result['Redshift'][0]
                 if not np.ma.is_masked(z):
-                    print(f"Found in NED: z = {z}")
+                    log(f"Found in NED: z = {z}")
                     return float(z)
             else:
                 # Try to pull redshift from redshift table
@@ -226,17 +240,17 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
                     if redshift_table is not None and 'Redshift' in redshift_table.colnames:
                         z = redshift_table['Redshift'][0]
                         if not np.ma.is_masked(z):
-                            print(f"Found in NED redshift table: z = {z}")
+                            log(f"Found in NED redshift table: z = {z}")
                             return float(z)
                 except Exception as e_inner:
-                    print(f"No redshift table found in NED ({type(e_inner).__name__}): {e_inner}")
+                    log(f"No redshift table found in NED ({type(e_inner).__name__}): {e_inner}")
     except Exception as e:
-        print(f"NED redshift lookup failed ({type(e).__name__}): {e}")
+        log(f"NED redshift lookup failed ({type(e).__name__}): {e}")
 
 
     # Try Simbad
     try:
-        print(f"Trying Simbad for redshift of {cluster_name}...")
+        log(f"Trying Simbad for redshift of {cluster_name}...")
 
         # Format for Simbad
         simbad_name = _format_simbad_name(cluster_name)
@@ -252,18 +266,18 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
             if 'rvz_redshift' in simbad_result.colnames:
                 z = simbad_result['rvz_redshift'][0]
                 if z is not None and not np.ma.is_masked(z):
-                    print(f"Found in Simbad: z = {z}")
+                    log(f"Found in Simbad: z = {z}")
                     return float(z)
     except Exception as e:
-        print(f"Simbad redshift lookup failed ({type(e).__name__}): {e}")
+        log(f"Simbad redshift lookup failed ({type(e).__name__}): {e}")
 
     # Fall back to BCGs if provided
     if BCGs is not None and len(BCGs) > 0:
-        print(f"Falling back to BCG redshift for {cluster_name}...")
+        log(f"Falling back to BCG redshift for {cluster_name}...")
         first_bcg = BCGs[0]  # (ra, dec, z)
         if len(first_bcg) >= 3:
             z = first_bcg[2]
-            print(f"Using BCG fallback: z = {z}")
+            log(f"Using BCG fallback: z = {z}")
             return float(z)
 
     raise ValueError(f"Could not find redshift for {cluster_name} in Simbad, NED, or BCG data.")

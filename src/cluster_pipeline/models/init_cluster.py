@@ -106,7 +106,7 @@ def cluster_init(
     if "ra" not in values or "dec" not in values:
         try:
             from cluster_pipeline.utils.resolvers import get_coordinates
-            coords = get_coordinates(identifier)
+            coords = get_coordinates(identifier, verbose=verbose)
             if "ra" not in values:
                 values["ra"] = float(coords.ra.deg)
             if "dec" not in values:
@@ -120,7 +120,7 @@ def cluster_init(
     if "redshift" not in values:
         try:
             from cluster_pipeline.utils.resolvers import get_redshift
-            values["redshift"] = float(get_redshift(identifier))
+            values["redshift"] = float(get_redshift(identifier, verbose=verbose))
             if verbose:
                 print(f"  [query] redshift: {values['redshift']}")
         except Exception as e:
