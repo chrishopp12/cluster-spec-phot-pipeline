@@ -29,6 +29,7 @@ from cluster_pipeline.constants import (
     DEFAULT_CONTOUR_LEVELS,
     DEFAULT_PSF_ARCSEC,
     DEFAULT_BANDWIDTH,
+    DEFAULT_MAG_MIN,
     DEFAULT_Z_PAD,
     DEFAULT_XRAY_FILENAME,
 )
@@ -79,6 +80,7 @@ class Cluster:
     color_type: str = DEFAULT_COLOR_TYPE
     psf: float = DEFAULT_PSF_ARCSEC
     bandwidth: float = DEFAULT_BANDWIDTH
+    mag_min: float = DEFAULT_MAG_MIN
     phot_levels: int = DEFAULT_PHOT_LEVELS
     phot_skip: int = DEFAULT_PHOT_SKIP
     contour_levels: tuple[float, float, float] = DEFAULT_CONTOUR_LEVELS

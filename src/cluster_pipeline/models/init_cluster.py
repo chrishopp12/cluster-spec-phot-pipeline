@@ -33,6 +33,7 @@ from cluster_pipeline.constants import (
     DEFAULT_CONTOUR_LEVELS,
     DEFAULT_PSF_ARCSEC,
     DEFAULT_BANDWIDTH,
+    DEFAULT_MAG_MIN,
 )
 
 
@@ -209,6 +210,7 @@ def _apply_defaults(values: dict[str, Any]) -> None:
         "contour_levels": DEFAULT_CONTOUR_LEVELS,
         "psf": DEFAULT_PSF_ARCSEC,
         "bandwidth": DEFAULT_BANDWIDTH,
+        "mag_min": DEFAULT_MAG_MIN,
     }
     for key, default in defaults.items():
         if key not in values:
@@ -221,7 +223,7 @@ def _apply_values(cluster: Cluster, values: dict[str, Any]) -> None:
     for key in ("ra", "dec", "ra_offset", "dec_offset", "search_radius",
                 "redshift", "redshift_err",
                 "z_min", "z_max", "richness", "richness_err", "fov", "fov_full",
-                "psf", "bandwidth"):
+                "psf", "bandwidth", "mag_min"):
         if key in values:
             setattr(cluster, key, _safe_float(values[key]))
 

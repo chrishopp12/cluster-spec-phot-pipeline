@@ -715,6 +715,7 @@ def run_redsequence(
         color_band=DEFAULT_COLOR_BAND,
         color_type=color_type,
         survey=survey,
+        mag_min=cluster.mag_min,
         zmin=z_min,
         zmax=z_max,
     )
