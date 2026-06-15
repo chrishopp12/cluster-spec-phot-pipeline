@@ -600,6 +600,33 @@ def plot_stacked_redshift_histograms(
     plot_stacked_velocity_histograms(vel_data,color=colors,show_plots=show_plots, save_plots=save_plots)
 
 def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None, ax1=None, ax2=None, legend_loc_bottom=None, show_plots=True, save_plots=False, save_path=None, cmap="viridis", **kwargs):
+    """Two-panel redshift figure: spec-member overlay (bottom) + redshift histogram (top).
+
+    The bottom panel is the optical image with spectroscopic members overlaid and
+    color-coded by redshift (via ``plot_redshift_overlay``); the top panel is the
+    redshift histogram with a zoom inset on the cluster z-range. Saved as
+    ``redshifts_hist_hmap.pdf`` via ``finalize_figure``.
+
+    Parameters
+    ----------
+    cluster : Cluster
+        Provides the optical image, spectroscopic catalog, BCGs, and z-range.
+    legend_loc : str, optional
+        Legend location for the overlay panel. [default: "lower right"]
+    fig, ax1, ax2 : matplotlib objects, optional
+        Existing figure / bottom (overlay) axis / top (histogram) axis. If both
+        ``ax1`` and ``ax2`` are None, a new two-panel figure is created.
+    legend_loc_bottom : str, optional
+        Legend location for the bottom panel; defaults to ``legend_loc``.
+    show_plots, save_plots : bool, optional
+        Whether to display / save the figure. [defaults: True / False]
+    save_path : str or None, optional
+        Directory or file path for the saved figure.
+    cmap : str, optional
+        Colormap for the redshift-coded scatter. [default: "viridis"]
+    **kwargs
+        Forwarded namespaced plotting overrides (e.g. ``density_*``, ``xray_*``).
+    """
     # plot_redshift_overlay not yet extracted into the new package
     from cluster_pipeline.plotting.xray import plot_redshift_overlay
 

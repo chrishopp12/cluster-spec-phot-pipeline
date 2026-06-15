@@ -100,9 +100,6 @@ def simbad_coord_lookup(simbad_name: str, verbose: bool = True) -> SkyCoord:
                 ra = result['ra'][0]
                 dec = result['dec'][0]
 
-                log(f"Found in SIMBAD: RA = {ra}, Dec = {dec}")
-                return SkyCoord(ra=ra, dec=dec, unit='deg')
-
             elif 'RA' in result.colnames and 'DEC' in result.colnames:
                 ra = result['RA'][0]
                 dec = result['DEC'][0]

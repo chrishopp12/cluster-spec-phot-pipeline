@@ -392,14 +392,6 @@ def define_contours_fov(
     # Extract only the X-ray data within the optical FOV
     z_fov = z[mask]
 
-    if verbose:
-        # Debug visualization (optional)
-        plt.figure(figsize=(10, 10))
-        plt.imshow(z, origin='lower', cmap='magma')
-        plt.contour(mask, levels=[0.5], colors='cyan', linewidths=1)  # Overlay optical FOV
-        plt.title("X-ray Data with Optical FOV Mask")
-        plt.show()
-
     # Compute statistics only in this region
     if z_fov.size == 0:
         raise ValueError("No X-ray data falls within the optical field of view.")

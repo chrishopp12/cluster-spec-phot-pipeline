@@ -19,7 +19,7 @@ Requirements:
 
 Notes:
   - FOV and offsets are specified in arcminutes.
-  - is_fits_valid() rejects images that are mostly empty (>50% zero pixels).
+  - is_fits_valid() rejects images that are mostly empty (>30% zero pixels).
   - Image dimensions default to DEFAULT_IMAGE_PIXELS from constants.py.
 """
 
@@ -141,9 +141,11 @@ def is_fits_valid(
     fits_path : str or Path
         Path to the FITS file to be checked.
     min_nonzero_fraction : float, optional
-        Minimum fraction of nonzero pixels required for the image to be considered valid (default is 0.5).
+        Minimum fraction of nonzero pixels required for the image to be considered valid (default is 0.7).
     min_intensity_threshold : float, optional
         Minimum intensity threshold for a pixel to be considered non-empty (default is 1e-5).
+    verbose : bool, optional
+        If True, print pixel-fraction diagnostics. [default: False]
 
     Returns
     -------
