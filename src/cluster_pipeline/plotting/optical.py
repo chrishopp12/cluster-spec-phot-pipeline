@@ -185,6 +185,7 @@ def add_density_contours(
     alpha: float = 1.0,
     linewidth: float = 1.2,
     cluster: "Cluster" | None = None,
+    weighted: bool = True,
     **kwargs,
 ):
     """
@@ -208,6 +209,8 @@ def add_density_contours(
         Contour transparency (default: 1.0).
     linewidth : float, optional
         Contour line width (default: 0.5).
+    weighted : bool, optional
+        Weight each source by ``lum_weight_r`` when computing the KDE (default: True)
     **kwargs
         Additional keyword arguments. Recognized namespaced overrides:
             - density_bandwidth : float
@@ -216,6 +219,7 @@ def add_density_contours(
             - density_color     : str
             - density_alpha     : float
             - density_linewidth : float
+            - density_weighted  : bool
             - density_*         : any ax.contour() kwarg
             - density_kwargs    : dict
 
@@ -243,6 +247,8 @@ def add_density_contours(
     alpha          = density_kwargs.pop('alpha', alpha)
     linewidth      = density_kwargs.pop('linewidth', linewidth)
     linewidth      = density_kwargs.pop('linewidths', linewidth)
+    if 'weighted' in density_kwargs:
+        weighted = bool(density_kwargs.pop('weighted'))
 
     # Priority: user override > cluster > default
     if user_bandwidth is not None:
@@ -270,7 +276,7 @@ def add_density_contours(
     RA_phot, Dec_phot, Lum_phot = load_photo_coords(photometric_file)
     ra = np.asarray(RA_phot)
     dec = np.asarray(Dec_phot)
-    weights = np.asarray(Lum_phot)
+    weights = np.asarray(Lum_phot) if weighted else None
 
     ra0, dec0 = float(np.median(ra)), float(np.median(dec))
     cosd0 = np.cos(np.deg2rad(dec0))
@@ -486,7 +492,7 @@ def plot_optical(
     **kwargs
         Additional options, including:
             - X-ray: xray_levels, xray_psf, xray_color, xray_alpha, xray_linewidth
-            - Density: density_bandwidth, density_levels, density_skip, density_color, density_alpha, density_linewidth
+            - Density: density_bandwidth, density_levels, density_skip, density_color, density_alpha, density_linewidth, density_weighted
             - Scalebar: scalebar_arcmin, scalebar_color, scalebar_fontsize
 
     Returns
