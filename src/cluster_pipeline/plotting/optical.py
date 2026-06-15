@@ -134,13 +134,13 @@ def add_xray_contours(
     # Levels: user override > cluster > default
     if user_levels is not None and isinstance(user_levels, tuple) and len(user_levels) == 3:
         contour_levels = user_levels
-    elif cluster is not None and hasattr(cluster, "contour_levels_tuple"):
-        try:
-            contour_levels = cluster.contour_levels_tuple
-        except Exception as e:
-            print(f"[WARNING] cluster.contour_levels_tuple is not a valid tuple: {e}")
-            # WARNING: This could be a string, tuple, or anything
-            contour_levels = getattr(cluster, "contour_levels", levels)
+    elif cluster is not None and hasattr(cluster, "contour_levels"):
+        cl = cluster.contour_levels
+        if isinstance(cl, (tuple, list)) and len(cl) == 3:
+            contour_levels = tuple(cl)
+        else:
+            print(f"[WARNING] cluster.contour_levels is not a valid 3-tuple: {cl!r}")
+            contour_levels = levels
     else:
         contour_levels = levels
 
