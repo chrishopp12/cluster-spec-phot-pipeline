@@ -282,6 +282,21 @@ def make_xray_plots(cluster, optical_image_file, show_plots=False, save_plots=Tr
     kernel_std_optical = arcsec_to_pixel_std(psf_arcsec, wcs_optical)
     reprojected_smoothed = smoothing(reprojected_filled, kernel_std_optical)
 
+    # --- Persist smoothed X-ray images as FITS ---
+    try:
+        fits.writeto(
+            os.path.join(cluster.xray_path, "smoothed_raw.fits"),
+            smoothed_raw.astype("float32"), wcs_xray.to_header(), overwrite=True,
+        )
+        if np.any(np.isfinite(reprojected_smoothed)):
+            fits.writeto(
+                os.path.join(cluster.xray_path, "smoothed_reprojected.fits"),
+                reprojected_smoothed.astype("float32"), wcs_optical.to_header(),
+                overwrite=True,
+            )
+    except Exception as e:
+        print(f"    Smoothed X-ray FITS write FAILED: {type(e).__name__}: {e}")
+
 
     # -- Plot single images --
     # Full images
