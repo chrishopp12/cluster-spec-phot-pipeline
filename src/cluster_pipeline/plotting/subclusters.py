@@ -42,6 +42,7 @@ from cluster_pipeline.plotting.common import finalize_figure
 from cluster_pipeline.plotting.optical import plot_optical
 from cluster_pipeline.plotting.arcs import plot_bcg_region_arcs
 from cluster_pipeline.utils import pop_prefixed_kwargs
+from cluster_pipeline.constants import DEFAULT_DPI
 
 
 def _get_optical(cluster):
@@ -760,7 +761,7 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
 
     if save_plots and save_path is not None:
         save_file = os.path.join(save_path, "redshifts_hist_hmap.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=450)
+        fig.savefig(save_file, dpi=DEFAULT_DPI)
     if show_plots:
         plt.show()
 
@@ -880,7 +881,7 @@ def plot_2panel_optical_contours(
     if save_path is not None and save_plots:
         suffix = "_hor" if layout == "horizontal" else "_vert"
         save_file = os.path.join(save_path, f"2panel_optical_contours{suffix}.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=450)
+        fig.savefig(save_file, dpi=DEFAULT_DPI)
     if show_plots:
         plt.show()
 
@@ -1324,7 +1325,7 @@ def plot_subcluster_regions_and_histograms(
 
     if save_plots and save_path is not None:
         save_file = os.path.join(save_path, "subcluster_histograms.pdf") if os.path.isdir(save_path) else save_path
-        fig.savefig(save_file, dpi=450)
+        fig.savefig(save_file, dpi=DEFAULT_DPI)
     if show_plots:
         plt.show()
     return fig

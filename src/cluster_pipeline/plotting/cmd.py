@@ -35,7 +35,7 @@ from cluster_pipeline.utils import get_color_mag_functions, split_members_by_spe
 from cluster_pipeline.utils.coordinates import skycoord_from_df
 from cluster_pipeline.io.catalogs import get_redseq_filename
 from cluster_pipeline.plotting.common import finalize_figure
-from cluster_pipeline.constants import DEFAULT_BANDWIDTH
+from cluster_pipeline.constants import DEFAULT_BANDWIDTH, DEFAULT_KDE_GRID_SIZE, DEFAULT_CMAP_DENSITY, COL_RA, COL_DEC, COL_Z
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -44,9 +44,9 @@ if TYPE_CHECKING:
 # ------------------------------------
 # Column name constants
 # ------------------------------------
-RA_COL = "RA"
-DEC_COL = "Dec"
-Z_COL = "z"
+RA_COL = COL_RA
+DEC_COL = COL_DEC
+Z_COL = COL_Z
 
 
 # ------------------------------------
@@ -529,7 +529,7 @@ def plot_density_contours(
     ra = ra[valid_mask]
     dec = dec[valid_mask]
 
-    npix = 300
+    npix = DEFAULT_KDE_GRID_SIZE
     if wcs is None:
         nx, ny = npix, npix
         wcs = WCS(naxis=2)
@@ -558,7 +558,7 @@ def plot_density_contours(
     ax = fig.add_subplot(111, projection=wcs)
 
     if fill:
-        ax.contourf(x_mesh, y_mesh, density, levels=levels, cmap="inferno")
+        ax.contourf(x_mesh, y_mesh, density, levels=levels, cmap=DEFAULT_CMAP_DENSITY)
     else:
         ax.contour(x_mesh, y_mesh, density, levels=levels, colors=base_color)
 

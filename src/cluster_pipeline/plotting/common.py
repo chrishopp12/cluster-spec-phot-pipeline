@@ -50,6 +50,7 @@ import astropy.units as u
 from cluster_pipeline.utils import pop_prefixed_kwargs
 from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.utils.cosmology import redshift_to_proper_distance
+from cluster_pipeline.constants import DEFAULT_DPI, DEFAULT_MARKER_SIZE_BCG
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.bcg import BCG
@@ -114,7 +115,7 @@ def finalize_figure(
 
             # Avoid Type3 embedding path; keep PDF output consistent
             with mpl.rc_context({"pdf.fonttype": 42, "ps.fonttype": 42}):
-                fig.savefig(staged, dpi=450, bbox_inches="tight")
+                fig.savefig(staged, dpi=DEFAULT_DPI, bbox_inches="tight")
 
             shutil.move(str(staged), str(save_file))
 
@@ -342,7 +343,7 @@ def overlay_bcg_markers(
             marker=marker,
             edgecolor=color,
             facecolor="none",
-            s=200,
+            s=DEFAULT_MARKER_SIZE_BCG,
             zorder=zorder,
             transform=ax.get_transform("icrs"),
             label=display_label,

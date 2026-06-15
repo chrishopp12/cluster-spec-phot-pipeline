@@ -30,6 +30,8 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from astropy.wcs import WCS
 
+from cluster_pipeline.constants import COORDINATE_FRAME, FWHM_TO_SIGMA
+
 
 def make_skycoord(
     ra_deg: np.ndarray | list[float],
@@ -53,7 +55,7 @@ def make_skycoord(
     return SkyCoord(
         ra=np.asarray(ra_deg, dtype=float) * u.deg,
         dec=np.asarray(dec_deg, dtype=float) * u.deg,
-        frame="icrs",
+        frame=COORDINATE_FRAME,
     )
 
 
@@ -138,7 +140,7 @@ def arcsec_to_pixel_std(
     pixscale = np.abs(wcs.proj_plane_pixel_scales()[0]).to_value(u.arcsec)
 
     fwhm_pixels = fwhm_arcsec / pixscale
-    sigma_pixels = float(fwhm_pixels / 2.355)  # Convert FWHM to sigma
+    sigma_pixels = float(fwhm_pixels / FWHM_TO_SIGMA)  # Convert FWHM to sigma
 
 
     return sigma_pixels

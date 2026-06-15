@@ -33,7 +33,7 @@ from astropy.coordinates import Angle
 from astropy.io import fits
 from astroquery.hips2fits import hips2fits
 
-from cluster_pipeline.constants import DEFAULT_IMAGE_PIXELS
+from cluster_pipeline.constants import DEFAULT_IMAGE_PIXELS, HIPS_SURVEYS
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -80,10 +80,7 @@ def get_optical_image(
     fov_deg = fov/ 60
 
     # Query prioritized surveys
-    surveys = [
-    {'name': 'PanSTARRS', 'hips': 'CDS/P/PanSTARRS/DR1/color-i-r-g'},
-    {'name': 'Legacy Survey', 'hips': 'CDS/P/DESI-Legacy-Surveys/DR10/color'},
-]
+    surveys = HIPS_SURVEYS
 
     img_name = f"optical_image_{fov}_{ra_offset}_{dec_offset}.fits"
     fits_path = os.path.join(cluster.photometry_path, img_name)

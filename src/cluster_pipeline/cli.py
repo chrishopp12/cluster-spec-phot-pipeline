@@ -22,6 +22,7 @@ import os
 import click
 
 from cluster_pipeline.plotting.common import setup_plot_style
+from cluster_pipeline.constants import PIPELINE_STAGES
 
 
 @click.group()
@@ -40,7 +41,7 @@ def main():
 @click.option("--base-path", type=click.Path(exists=True, file_okay=False),
               default=None, help="Base directory for cluster data.")
 @click.option("--stages", multiple=True,
-              type=click.Choice(["spec", "phot", "matching", "redseq", "subclusters", "xray"], case_sensitive=False),
+              type=click.Choice(PIPELINE_STAGES, case_sensitive=False),
               help="Pipeline stages to run (default: all).")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
 @click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures (default: on).")
@@ -116,7 +117,7 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
 
     # --- Determine stages ---
     if not stages:
-        stages = ("spec", "phot", "matching", "redseq", "subclusters", "xray")
+        stages = PIPELINE_STAGES
 
     click.echo(f"\n{'='*50}")
     click.echo(f"  Cluster: {cluster.identifier}")

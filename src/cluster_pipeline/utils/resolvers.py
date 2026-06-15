@@ -38,6 +38,7 @@ from astroquery.simbad import Simbad
 from astroquery.vizier import Vizier
 
 from cluster_pipeline.utils import to_float_or_none
+from cluster_pipeline.constants import DEFAULT_SIMBAD_TIMEOUT
 
 
 def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
@@ -63,7 +64,7 @@ def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
     try:
         print(f"Trying Simbad for {simbad_name}...")
         simbad = Simbad()
-        simbad.TIMEOUT = 10
+        simbad.TIMEOUT = DEFAULT_SIMBAD_TIMEOUT
         simbad.add_votable_fields("coordinates")
         result = simbad.query_object(simbad_name)
 
@@ -247,7 +248,7 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
 
 
         custom_simbad = Simbad()
-        custom_simbad.TIMEOUT = 10
+        custom_simbad.TIMEOUT = DEFAULT_SIMBAD_TIMEOUT
         custom_simbad.add_votable_fields('rvz_redshift')
         simbad_result = custom_simbad.query_object(simbad_name)
 

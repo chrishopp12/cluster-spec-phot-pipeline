@@ -43,7 +43,7 @@ from astropy import units as u
 import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
-from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD
+from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD, GAUSSIAN_SIGMA_MULTIPLIER
 
 
 def fit_gaussian_model(z, max_components=DEFAULT_GMM_MAX_COMPONENTS, min_galaxies=DEFAULT_GMM_MIN_GALAXIES, broad_threshold=DEFAULT_GMM_BROAD_THRESHOLD, verbose=True):
@@ -117,7 +117,7 @@ def fit_gaussian_model(z, max_components=DEFAULT_GMM_MAX_COMPONENTS, min_galaxie
     # Filter out broad Gaussians and those with too few galaxies
     valid_gaussians = []
     for i, (mean, std, weight) in enumerate(zip(means, stds, weights)):
-        z_low_fit, z_high_fit = mean - 3 * std, mean + 3 * std
+        z_low_fit, z_high_fit = mean - GAUSSIAN_SIGMA_MULTIPLIER * std, mean + GAUSSIAN_SIGMA_MULTIPLIER * std
         N_local = np.sum((z_subset > mean - std) & (z_subset < mean + std))
         if verbose:
             msg = (

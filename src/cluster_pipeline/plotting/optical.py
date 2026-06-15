@@ -52,7 +52,7 @@ from cluster_pipeline.plotting.common import (
     add_scalebar,
     overlay_bcg_markers,
 )
-from cluster_pipeline.constants import DEFAULT_PSF_ARCSEC, DEFAULT_CONTOUR_LEVELS, DEFAULT_BANDWIDTH
+from cluster_pipeline.constants import DEFAULT_PSF_ARCSEC, DEFAULT_CONTOUR_LEVELS, DEFAULT_BANDWIDTH, DEFAULT_KDE_GRID_SIZE
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -289,8 +289,8 @@ def add_density_contours(
     xy = np.vstack([x, y])
     kde = gaussian_kde(xy, bw_method=contour_bandwidth, weights=weights)
 
-    ra_grid = np.linspace(x.min(), x.max(), 300)
-    dec_grid = np.linspace(y.min(), y.max(), 300)
+    ra_grid = np.linspace(x.min(), x.max(), DEFAULT_KDE_GRID_SIZE)
+    dec_grid = np.linspace(y.min(), y.max(), DEFAULT_KDE_GRID_SIZE)
     ra_mesh, dec_mesh = np.meshgrid(ra_grid, dec_grid)
     density = kde(np.vstack([ra_mesh.ravel(), dec_mesh.ravel()])).reshape(ra_mesh.shape)
 

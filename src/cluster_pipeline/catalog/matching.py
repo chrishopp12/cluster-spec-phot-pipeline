@@ -46,6 +46,7 @@ from cluster_pipeline.utils.coordinates import make_skycoord, skycoord_from_df
 from cluster_pipeline.utils.resolvers import get_redmapper_bcg_candidates
 from cluster_pipeline.config import load_config
 from cluster_pipeline.io.catalogs import read_bcg_csv, select_bcgs
+from cluster_pipeline.constants import DEFAULT_MATCH_TOL_ARCSEC
 
 # ---------------------------------------------------------------
 # Column constants
@@ -55,7 +56,7 @@ COLUMNS_PHOT = [
     "RA", "Dec", "gmag", "rmag", "imag", "phot_source",
     "lum_weight_g", "lum_weight_r", "lum_weight_i", "g_r", "r_i", "g_i",
 ]
-DEFAULT_TOL_ARCSEC = 3.0
+DEFAULT_TOL_ARCSEC = DEFAULT_MATCH_TOL_ARCSEC
 DEBLEND_PAIR_TOL_ARCSEC = 0.7 # Pair separation for the BCG NaN-rescue in _match_bcgs_phot.
 
 

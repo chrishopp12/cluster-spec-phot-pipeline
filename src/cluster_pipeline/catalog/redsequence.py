@@ -40,7 +40,11 @@ from cluster_pipeline.models.cluster import Cluster
 from cluster_pipeline.utils import coerce_to_numeric, get_color_mag_functions
 from cluster_pipeline.utils.coordinates import make_skycoord
 from cluster_pipeline.catalog.matching import match_skycoords_unique
-from cluster_pipeline.constants import DEFAULT_MAG_MIN, DEFAULT_COLOR_BAND
+from cluster_pipeline.constants import (
+    DEFAULT_MAG_MIN, DEFAULT_COLOR_BAND, DEFAULT_SIGMA_CLIP, DEFAULT_FIT_MAX_ITER,
+    DEFAULT_MATCH_TOL_ARCSEC, COL_RA, COL_DEC, COL_Z, COL_SIGMA_Z,
+    COL_SPEC_SOURCE, COL_PHOT_SOURCE,
+)
 
 
 # ---------------------------------------------------------------
@@ -48,12 +52,12 @@ from cluster_pipeline.constants import DEFAULT_MAG_MIN, DEFAULT_COLOR_BAND
 # ---------------------------------------------------------------
 DEFAULT_MAG = "rmag"
 
-RA_COL = "RA"
-DEC_COL = "Dec"
-Z_COL = "z"
-SIGMA_Z_COL = "sigma_z"
-SPEC_SOURCE_COL = "spec_source"
-PHOT_SOURCE_COL = "phot_source"
+RA_COL = COL_RA
+DEC_COL = COL_DEC
+Z_COL = COL_Z
+SIGMA_Z_COL = COL_SIGMA_Z
+SPEC_SOURCE_COL = COL_SPEC_SOURCE
+PHOT_SOURCE_COL = COL_PHOT_SOURCE
 
 # Columns retained in the final member catalog
 MEMBER_COLS = [
@@ -130,8 +134,8 @@ def iterative_linear_fit(
         x: np.ndarray,
         y: np.ndarray,
         *,
-        sigma_clip: float = 2.0,
-        max_iter: int = 10
+        sigma_clip: float = DEFAULT_SIGMA_CLIP,
+        max_iter: int = DEFAULT_FIT_MAX_ITER
     ) -> tuple[LinearRegression | None, np.ndarray | None]:
     """
     Iteratively fits a linear model using sigma-clipping to remove outliers.
@@ -464,7 +468,7 @@ def fit_and_select_red_sequence(
         matched_coords = make_skycoord(matched_df[RA_COL], matched_df[DEC_COL])
         full_coords = make_skycoord(full_catalog[RA_COL], full_catalog[DEC_COL])
         full_idx, matched_idx, _ = match_skycoords_unique(
-            full_coords, matched_coords, match_tol_arcsec=3.0,
+            full_coords, matched_coords, match_tol_arcsec=DEFAULT_MATCH_TOL_ARCSEC,
         )
         for col in available_spec_cols:
             if col not in full_catalog.columns:
@@ -498,7 +502,7 @@ def build_member_catalog(
     z_min: float,
     z_max: float,
     *,
-    match_tol_arcsec: float = 3.0,
+    match_tol_arcsec: float = DEFAULT_MATCH_TOL_ARCSEC,
 ) -> pd.DataFrame:
     """Build a deduplicated cluster member catalog from spec + phot members.
 

@@ -51,7 +51,7 @@ from reproject import reproject_interp
 
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
 from cluster_pipeline.utils import pop_prefixed_kwargs
-from cluster_pipeline.constants import DEFAULT_XRAY_FILENAME, DEFAULT_PSF_ARCSEC
+from cluster_pipeline.constants import DEFAULT_XRAY_FILENAME, DEFAULT_PSF_ARCSEC, DEFAULT_CMAP_XRAY
 from cluster_pipeline.xray.image import fill_holes, smoothing
 from cluster_pipeline.plotting.common import finalize_figure
 from cluster_pipeline.plotting.optical import plot_optical
@@ -191,7 +191,7 @@ def plot_xray(
         ax.imshow(
             xray_data,
             origin='lower',
-            cmap='magma',
+            cmap=DEFAULT_CMAP_XRAY,
             transform=ax.get_transform(wcs_xray),
             vmin=np.percentile(xray_data, 5),
             vmax=np.percentile(xray_data, 99.95)
@@ -200,7 +200,7 @@ def plot_xray(
         ax.imshow(
             xray_data,
             origin='lower',
-            cmap='magma',
+            cmap=DEFAULT_CMAP_XRAY,
             vmin=np.percentile(xray_data, 5),
             vmax=np.percentile(xray_data, 99.95)
         )
