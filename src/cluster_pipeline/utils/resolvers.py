@@ -41,6 +41,22 @@ from cluster_pipeline.utils import to_float_or_none
 from cluster_pipeline.constants import DEFAULT_SIMBAD_TIMEOUT
 
 
+def _format_simbad_name(cluster_name: str) -> str:
+    """Map a cluster name to a SIMBAD-resolvable identifier.
+
+    redMaPPer 'RMJ…' names -> '[RRB2014] RM …'; Abell 'A…' names -> 'ACO <number>';
+    anything else is returned unchanged for a raw SIMBAD lookup.
+    """
+    stripped_name = cluster_name.strip().replace(" ", "")
+    cluster_number = "".join(re.findall(r"\d+", cluster_name))
+    if stripped_name.lower().startswith('rmj'):
+        return f"[RRB2014] RM {stripped_name[2:]}"
+    elif stripped_name.lower().startswith('a'):
+        return f"ACO {cluster_number}"
+    print("Name does not match expected syntax, trying SIMBAD with raw name")
+    return cluster_name
+
+
 def simbad_coord_lookup(simbad_name: str) -> SkyCoord:
     """
     Attempts to resolve coordinates from SIMBAD by name.
@@ -135,8 +151,6 @@ def get_coordinates(identifier: str) -> SkyCoord:
     """
 
     cluster_name = get_name(identifier)
-    stripped_name = cluster_name.strip().replace(" ","")
-    cluster_number = "".join(re.findall(r"\d+", cluster_name))
 
     print(f"Resolving coordinates for {cluster_name}...")
     # First try NED
@@ -155,15 +169,7 @@ def get_coordinates(identifier: str) -> SkyCoord:
         print(f"NED lookup failed ({type(e).__name__}): {e}")
 
     # Format for Simbad
-    if stripped_name.lower().startswith('rmj'):
-        simbad_name = f"[RRB2014] RM {stripped_name[2:]}"
-
-    elif stripped_name.lower().startswith('a'):
-        simbad_name = f"ACO {cluster_number}"
-
-    else:
-        print("Name does not match expected syntax, trying SIMBAD with raw name")
-        simbad_name = cluster_name
+    simbad_name = _format_simbad_name(cluster_name)
 
     try:
         coord = simbad_coord_lookup(simbad_name)
@@ -201,9 +207,6 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
     cluster_name = get_name(identifier)
     print(f"Retrieving redshift for {cluster_name}...")
 
-    stripped_name = cluster_name.strip().replace(" ","")
-    cluster_number = "".join(re.findall(r"\d+", cluster_name))
-
     # Try NED
     try:
         print(f"Trying NED for redshift of {cluster_name}...")
@@ -236,15 +239,7 @@ def get_redshift(identifier: str, BCGs: list[tuple] | None = None) -> float:
         print(f"Trying Simbad for redshift of {cluster_name}...")
 
         # Format for Simbad
-        if stripped_name.lower().startswith('rmj'):
-            simbad_name = f"[RRB2014] RM {stripped_name[2:]}"
-
-        elif stripped_name.lower().startswith('a'):
-            simbad_name = f"ACO {cluster_number}"
-
-        else:
-            print("Name does not match expected syntax, trying SIMBAD with raw name")
-            simbad_name = cluster_name
+        simbad_name = _format_simbad_name(cluster_name)
 
 
         custom_simbad = Simbad()
