@@ -20,6 +20,7 @@ from __future__ import annotations
 import os
 
 import click
+import pandas as pd
 
 from cluster_pipeline.plotting.common import setup_plot_style
 from cluster_pipeline.constants import PIPELINE_STAGES
@@ -178,7 +179,6 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
             export_redshift_table, export_new_redshift_table,
             export_bcg_table, export_cluster_summary_row,
         )
-        import pandas as pd
 
         click.echo("\n--- Tables ---")
         cluster.ensure_directories()
@@ -235,8 +235,6 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
                 panstarrs_phot = os.path.join(cluster.photometry_path, "photometry_panstarrs.csv")
                 legacy_matched = os.path.join(cluster.photometry_path, "legacy_matched.csv")
                 panstarrs_matched = os.path.join(cluster.photometry_path, "panstarrs_matched.csv")
-
-                import pandas as pd
                 leg_df = pd.read_csv(legacy_phot) if os.path.isfile(legacy_phot) else pd.DataFrame()
                 pan_df = pd.read_csv(panstarrs_phot) if os.path.isfile(panstarrs_phot) else pd.DataFrame()
                 leg_spec = pd.read_csv(legacy_matched) if os.path.isfile(legacy_matched) else None
@@ -399,7 +397,6 @@ def info(cluster_id, base_path):
 def list_clusters(base_path):
     """List all known clusters from clusters.csv."""
     from cluster_pipeline.models.cluster import DEFAULT_BASE_PATH
-    import pandas as pd
 
     bp = base_path or str(DEFAULT_BASE_PATH)
     csv_path = os.path.join(bp, "clusters.csv")
@@ -433,7 +430,6 @@ def _write_bcgs_csv(cluster, bcgs: list) -> None:
     Includes both redMaPPer and manual BCGs. This is a data product
     with all available photometry and spectroscopy for each BCG.
     """
-    import pandas as pd
 
     rows = []
     for bcg in sorted(bcgs, key=lambda b: b.bcg_id):
