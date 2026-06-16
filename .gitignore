@@ -35,3 +35,10 @@ src/cluster_pipeline.egg-info/
 # -----------------------
 CLAUDE.md
 session_log.md
+
+# -----------------------
+# Committed test fixture inputs (override *.csv above; generated outputs stay ignored)
+# -----------------------
+!tests/data/RMJ_0219/BCGs.csv
+!tests/data/RMJ_0219/Redshifts/archival_z.csv
+!tests/data/RMJ_0219/Photometry/photometry_legacy.csv

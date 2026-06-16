@@ -128,15 +128,24 @@ External data requirements:
 ## Testing
 
 ```bash
-pytest                    # Run all tests
+pytest                        # Unit + integration tests
+pytest -m "not integration"   # Unit tests only (fast, no pipeline run)
 pytest tests/test_config.py   # Config system tests
 pytest tests/test_models.py   # Data model tests
 ```
 
-Integration testing uses test data at `pipeline_v2_tests/RMJ_1327/`:
+The unit tests are self-contained (no data required). An offline integration test
+(`tests/test_integration.py`) runs the matching → red-sequence → subclusters slice
+against a minimal committed fixture at `tests/data/RMJ_0219/` — RMJ 0219 cut to the
+central 4.5′ with archival redshifts only, plus a BCG seed catalog so matching skips
+its redMaPPer lookup. No network, CASJobs credentials, or X-ray FITS image are needed.
+
+Reproduce the integration run by hand (copy first so products don't land in the fixture):
 
 ```bash
-cluster-pipeline run "RMJ 1327" --base-path path/to/pipeline_v2_tests
+cp -r tests/data /tmp/cp_test
+cluster-pipeline run RMJ_0219 --base-path /tmp/cp_test \
+    --stages matching,redseq,subclusters --no-save-plots
 ```
 
 ## License

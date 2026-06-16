@@ -1,0 +1,38 @@
+# Cluster Pipeline configuration
+# Edit this file or use `cluster-pipeline run ... --save` to update.
+# CLI overrides are ephemeral unless --save is passed.
+
+fov: 10.0
+fov_full: 30.0
+ra_offset: 1.0
+dec_offset: 2.5
+search_radius: 10.0
+psf: 8.0
+survey: legacy
+color_type: gr
+bandwidth: 0.1
+mag_min: 16.0
+phot_levels: 12
+phot_skip: 2
+z_pad: 0.15
+z_min: 0.350
+z_max: 0.380
+default_radius_arcmin: 2.5
+xray:
+  filename: comb-adaptimsky-400-1100.fits
+  contour_levels:
+  - 0.5
+  - 0
+  - 12
+subclusters:
+  1:
+    bcg_id: 1
+    radius_arcmin: 2.5
+  2:
+    bcg_id: 2
+    radius_arcmin: 2.5
+identifier: RMJ_0219
+name: RMJ_0219
+ra: 34.967312
+dec: 1.497834
+redshift: 0.365

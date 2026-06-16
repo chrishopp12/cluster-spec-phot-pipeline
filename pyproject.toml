@@ -33,3 +33,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "integration: end-to-end pipeline run on the bundled fixture (slower; needs full deps)",
+]
