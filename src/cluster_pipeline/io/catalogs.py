@@ -272,6 +272,8 @@ def load_photo_coords(
         Right Ascension values in degrees.
     dec : np.ndarray
         Declination values in degrees.
+    mag : np.ndarray
+        Magnitude values (from ``mag_col``).
     """
     df = pd.read_csv(csv_file)
     df_clean = df[(df[mag_col]) > 0]

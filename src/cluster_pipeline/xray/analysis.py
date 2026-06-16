@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 from scipy.ndimage import map_coordinates

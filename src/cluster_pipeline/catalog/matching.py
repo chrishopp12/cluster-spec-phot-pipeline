@@ -990,8 +990,6 @@ def _discover_phot_files(
     dict[str, pd.DataFrame]
         Survey name -> photometry DataFrame.
     """
-    import glob
-
     pattern = os.path.join(cluster.photometry_path, "photometry_*.csv")
     phot_dfs: dict[str, pd.DataFrame] = {}
 

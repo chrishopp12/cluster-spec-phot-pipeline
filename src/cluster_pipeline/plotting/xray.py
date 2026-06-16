@@ -713,13 +713,6 @@ def gaussian_grad_magnitude(
     broad = gaussian_filter(xray_reprojected, sigma=5 * kernel_std_optical)
     unsharp = fine - broad
 
-    # Example: define endpoints (RA, Dec) in degrees
-    # p1 = (34.975, 1.48333)
-    # p2 = (34.96731, 1.49783)
-    p1 = (35, 1.49)
-    p2 = (34.95, 1.49167)
-
-
     # --- Full-width horizontal cut at fixed Dec ---
     ny_opt, nx_opt = optical_data.shape[:2]
     dec_cut_deg = wcs_optical.pixel_to_world(nx_opt/2, ny_opt/2).dec.deg -0.4/60
@@ -757,7 +750,6 @@ def gaussian_grad_magnitude(
 
 
 
-    bg = "#0e0e0e8b"
     fig = plt.figure(figsize=(7, 12))
     gs = fig.add_gridspec(4, 1, height_ratios=[0.25, 1, 1, 1], hspace=0.04)
 
@@ -823,7 +815,7 @@ def gaussian_grad_magnitude(
     ax3.set_ylabel('Decl.')
 
     fig.subplots_adjust(top=0.96, bottom=0.05, left=0.01, right=0.92)
-    plt.draw()  # or: fig.canvas.draw()
+    plt.draw()
 
     pos1 = ax1.get_position()  # final box of the top WCS axis (after aspect)
 

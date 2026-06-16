@@ -303,7 +303,7 @@ def build_point_signature(coord, bisectors, exclude_pair=None):
             sig.append(sign)
     return sig
 
-def classify_segments(segments, bisectors, bcg_signatures, verbose=False):
+def classify_segments(segments, bisectors, bcg_signatures):
     """
     Assigns each bisector segment (line between intersection points) to one or more BCG-defined regions
     using signature vectors, so each region is bounded by the relevant segments for that BCG.
@@ -319,9 +319,7 @@ def classify_segments(segments, bisectors, bcg_signatures, verbose=False):
     bisectors : list of dict
         Output from get_bisectors. Each must contain 'pair' and 'pole'.
     bcg_signatures : dict
-        Output from build_bisector_signatures. Keys are BCG indices; values are signature lists (+1, -1, 0).
-    verbose : bool, optional
-        If True, print detailed classification info.
+        Output from build_bcg_signatures. Keys are BCG indices; values are signature lists (+1, -1, 0).
 
     Returns
     -------

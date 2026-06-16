@@ -469,7 +469,7 @@ def query_sdss(
     AND s.class = 'GALAXY'
     """
 
-    print(f"  SDSS query...")
+    print("  SDSS query...")
     try:
         response = requests.post(
             SDSS_URL,
@@ -528,7 +528,7 @@ def query_desi(
     dec_deg = float(coord.dec.deg)
     radius_deg = radius_arcmin / 60.0
 
-    print(f"  DESI query...")
+    print("  DESI query...")
     try:
         tap = TapPlus(url=DESI_URL)
         query = f"""

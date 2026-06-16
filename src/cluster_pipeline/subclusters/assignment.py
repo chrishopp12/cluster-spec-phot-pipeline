@@ -29,7 +29,7 @@ from cluster_pipeline.subclusters.geometry import (
 )
 
 
-def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, verbose=False):
+def assign_subcluster_regions(subclusters, margin_frac=5.0, verbose=False):
     """
     Assign spatial regions to each BCG (Brightest Cluster Galaxy) using all pairwise bisectors.
 
@@ -41,8 +41,6 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, verbose
     ----------
     subclusters : list[Subcluster]
         List of Subcluster objects.
-    margin : float, optional
-        Absolute padding (in degrees) to expand the bounding box. [default: 0.05]
     margin_frac : float, optional
         Fractional padding (as a multiple of the max RA/Dec extent) to expand the bounding box. [default: 5.0]
 
@@ -87,7 +85,7 @@ def assign_subcluster_regions(subclusters, margin=0.05, margin_frac=5.0, verbose
     bcg_signatures = build_bcg_signatures(subclusters, bisectors)
 
     # -- Classify segments into BCG-defined regions --
-    bcg_regions = classify_segments(segments, bisectors, bcg_signatures, verbose=verbose)
+    bcg_regions = classify_segments(segments, bisectors, bcg_signatures)
 
     # -- Populate Region objects on each Subcluster --
     for i, sub in enumerate(subclusters):

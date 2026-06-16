@@ -30,7 +30,7 @@ from cluster_pipeline.constants import COSMO
 
 def redshift_to_comoving_distance(z: float | np.ndarray) -> float | np.ndarray:
     """
-    Convert redshift to comoving distance using the Planck18 cosmology.
+    Convert redshift to comoving distance using the configured cosmology (COSMO).
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def redshift_to_comoving_distance(z: float | np.ndarray) -> float | np.ndarray:
 
 def redshift_to_proper_distance(z: float | np.ndarray) -> float | np.ndarray:
     """
-    Convert redshift to proper distance at the time of emission using Planck18 cosmology.
+    Convert redshift to angular-diameter distance using the configured cosmology (COSMO).
 
     Parameters
     ----------

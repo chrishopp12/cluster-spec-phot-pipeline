@@ -115,7 +115,6 @@ def plot_subcluster_members_and_regions(
     ax : matplotlib.axes.Axes
         Axes with plotted subclusters and regions.
     """
-    # get_bisectors / build_bcg_signatures not yet extracted into the new package
     from cluster_pipeline.subclusters.geometry import get_bisectors, build_bcg_signatures
 
     subcluster_kwargs = pop_prefixed_kwargs(kwargs, 'subcluster')
@@ -255,7 +254,6 @@ def plot_redshift_and_subclusters_figure(
         The redshift scatter artist from ax1 (for colorbar).
 
     """
-    # plot_redshift_overlay not yet extracted into the new package
     from cluster_pipeline.plotting.xray import plot_redshift_overlay
 
     if legend_loc_bottom is None:
@@ -627,7 +625,6 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
     **kwargs
         Forwarded namespaced plotting overrides (e.g. ``density_*``, ``xray_*``).
     """
-    # plot_redshift_overlay not yet extracted into the new package
     from cluster_pipeline.plotting.xray import plot_redshift_overlay
 
     if legend_loc_bottom is None:

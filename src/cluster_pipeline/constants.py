@@ -27,7 +27,7 @@ DEFAULT_COLOR_TYPE = "gr"        # Color band for red sequence: "gr", "ri", "gi"
 # X-ray
 # ------------------------------------
 DEFAULT_XRAY_FILENAME = "comb-adaptimsky-400-1100.fits"  # Standard XMM combined image
-DEFAULT_PSF_ARCSEC = 8.0  # PSF smoothing in arcsec (was 8.0 in cluster.py, 10.0 in run_xray_pipeline.py — using 8.0)
+DEFAULT_PSF_ARCSEC = 8.0  # PSF smoothing in arcsec
 
 # ------------------------------------
 # Contours & Density

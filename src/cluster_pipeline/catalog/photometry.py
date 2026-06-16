@@ -177,7 +177,7 @@ def query_panstarrs(
     - Uses VizieR catalog II/349/ps1 (PanSTARRS DR1 mean photometry).
     - Row limit is set to -1 (unlimited) to retrieve all sources.
     """
-    print(f"  PanSTARRS query...")
+    print("  PanSTARRS query...")
 
     vizier = Vizier(
         columns=["RAJ2000", "DEJ2000", "gmag", "rmag", "imag"],
@@ -236,7 +236,7 @@ def query_legacy(
     - Only returns brick_primary=1 sources (avoids duplicate detections).
     - Paginated to handle large catalogs.
     """
-    print(f"  Legacy DR10 query...")
+    print("  Legacy DR10 query...")
 
     tap = TapPlus(url=LEGACY_URL)
     ra, dec = float(coord.ra.deg), float(coord.dec.deg)

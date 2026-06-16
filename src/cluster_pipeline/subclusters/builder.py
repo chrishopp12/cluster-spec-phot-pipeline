@@ -112,7 +112,7 @@ def build_subclusters(
         subclusters.append(sc)
         log.info(
             "Subcluster %d  BCG=%d  label='%s'  color='%s'  "
-            "radius=%.2f Mpc  z_range=%s",
+            "radius=%.2f arcmin  z_range=%s",
             idx + 1, sc.bcg_id, sc.label, sc.color,
             sc.radius_arcmin, sc.z_range,
         )
