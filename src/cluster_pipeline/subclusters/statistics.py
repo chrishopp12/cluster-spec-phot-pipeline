@@ -53,7 +53,7 @@ from astropy import units as u
 import scipy.stats
 
 from cluster_pipeline.plotting.common import finalize_figure
-from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD, GAUSSIAN_SIGMA_MULTIPLIER
+from cluster_pipeline.constants import DEFAULT_GMM_MAX_COMPONENTS, DEFAULT_GMM_MIN_GALAXIES, DEFAULT_GMM_BROAD_THRESHOLD, GAUSSIAN_SIGMA_MULTIPLIER, DEFAULT_AD_MC_SAMPLES, DEFAULT_AD_SEED
 
 
 def fit_gaussian_model(z, max_components=DEFAULT_GMM_MAX_COMPONENTS, min_galaxies=DEFAULT_GMM_MIN_GALAXIES, broad_threshold=DEFAULT_GMM_BROAD_THRESHOLD, verbose=True):
@@ -168,34 +168,38 @@ def make_stats_table(
     Computes and plots statistics for each subcluster defined by Gaussian fits, including
     Kolmogorov-Smirnov and Anderson-Darling tests, and generates a LaTeX table.
 
-    Adds an (approx) p-value for the Anderson-Darling normality test:
-      - Prefer statsmodels.normal_ad (recommended)
-      - Fall back to a common Stephens-style approximation if statsmodels isn't installed
+    Reports the Anderson-Darling statistic and a Monte-Carlo p-value for the
+    null hypothesis that the redshifts are normally distributed. The p-value
+    comes from scipy's ``goodness_of_fit`` parametric bootstrap (statistic="ad"),
+    which correctly accounts for the mean/variance being estimated from the
+    sample. A fixed RNG seed makes the p-value reproducible across runs.
     """
 
-    def _ad_pvalue_normality(z_subset: np.ndarray) -> tuple[float, float]:
+    def _ad_normality(z_subset: np.ndarray) -> tuple[float, float]:
         """
-        Anderson-Darling normality test (unknown mean/variance) with p-value.
+        Anderson-Darling normality test (estimated mean/variance) with a
+        Monte-Carlo p-value.
+
+        Uses ``scipy.stats.goodness_of_fit`` with a fixed RNG seed, so the
+        p-value is deterministic across runs. Returns ``(nan, nan)`` for
+        degenerate samples (N < 3 or zero variance) and on any solver error.
 
         Returns
         -------
         ad_stat, ad_p : float, float
         """
         z_subset = np.asarray(z_subset, dtype=float)
-        n = z_subset.size
-        if n < 3:
+        if z_subset.size < 3 or not np.isfinite(np.std(z_subset)) or np.std(z_subset) == 0:
             return np.nan, np.nan
-
-        # Preferred: statsmodels provides AD stat + calibrated p-value
         try:
-            from statsmodels.stats.diagnostic import normal_ad  # type: ignore
-            ad2, p = normal_ad(z_subset)
-            return float(ad2), float(p)
+            res = scipy.stats.goodness_of_fit(
+                scipy.stats.norm, z_subset, statistic="ad",
+                n_mc_samples=DEFAULT_AD_MC_SAMPLES,
+                rng=np.random.default_rng(DEFAULT_AD_SEED),
+            )
+            return float(res.statistic), float(res.pvalue)
         except Exception:
-            pass
-
-        # statsmodels not available — return dummy values
-        return np.nan, np.nan
+            return np.nan, np.nan
 
     stats_list = []
     stats_values = []
@@ -210,7 +214,7 @@ def make_stats_table(
 
         if N == 0:
             print(f"Skipping subcluster {i+1} (no data in range).")
-            stats_list.append([i + 1, z_low, z_high, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, "No data"])
+            stats_list.append([i + 1, z_low, z_high, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, "No data"])
             stats_values.append(None)
             continue
 
@@ -228,33 +232,16 @@ def make_stats_table(
         else:
             ks_statistic, ks_p_value = np.nan, np.nan
 
-        # AD stat + p-value
-        ad_stat, ad_p_value = _ad_pvalue_normality(z_subset)
+        # AD statistic + Monte-Carlo p-value (estimated-parameter normality test)
+        ad_stat, ad_p_value = _ad_normality(z_subset)
 
-        if N >= 3:
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                anderson_res = scipy.stats.anderson(z_subset, dist="norm")
-            sig_levels = anderson_res.significance_level
-            crit_values = anderson_res.critical_values
-
-            # Monte-Carlo AD-normality p-value. Uses goodness_of_fit (scipy >=1.10)
-            gof_res2 = scipy.stats.goodness_of_fit(scipy.stats.norm, z_subset, statistic="ad")
-            ad_p_value2 = gof_res2.pvalue
-
-            ad_significance = None
-            for level, crit in zip(sig_levels[::-1], crit_values[::-1]):  # descending order
-                if np.isfinite(ad_stat) and ad_stat > crit:
-                    ad_significance = level
-                    break
-            if ad_significance is None:
-                ad_significance = "Fail to Reject Normality"
+        # Normality verdict from the AD p-value (alpha = 0.05)
+        if np.isfinite(ad_p_value):
+            ad_normality = "Reject normality" if ad_p_value < 0.05 else "Consistent with normal"
         else:
-            sig_levels, crit_values = [], []
-            ad_significance = "Insufficient N (<3)"
+            ad_normality = "Insufficient data"
 
-        # Store in list (now includes AD stat + AD p-value)
+        # Store row (AD statistic + Monte-Carlo p-value + verdict)
         stats_list.append([
             i + 1,
             round(float(z_low), 3),
@@ -265,8 +252,7 @@ def make_stats_table(
             round(ks_p_value, 4) if np.isfinite(ks_p_value) else np.nan,
             round(ad_stat, 4) if np.isfinite(ad_stat) else np.nan,
             round(ad_p_value, 4) if np.isfinite(ad_p_value) else np.nan,
-            round(ad_p_value2, 4) if np.isfinite(ad_p_value2) else np.nan,
-            ad_significance,
+            ad_normality,
         ])
 
         stats_values.append({
@@ -279,8 +265,7 @@ def make_stats_table(
             "KS p-value": ks_p_value,
             "AD Stat": ad_stat,
             "AD p-value": ad_p_value,
-            "AD p-value (interpolated)": ad_p_value2,
-            "Anderson Level": ad_significance,
+            "Normality": ad_normality,
         })
 
         if verbose:
@@ -289,10 +274,8 @@ def make_stats_table(
             print(f"          KS Test Statistic: {ks_statistic}")
             print(f"                 KS p-value: {ks_p_value}")
             print(f" Anderson-Darling Statistic: {ad_stat}")
-            print(f"        Anderson-Darling p : {ad_p_value}")
-            print(f"        Anderson-Darling p (interpolated): {ad_p_value2}")
-            print(f"            Critical Values: {crit_values}")
-            print(f"        Significance Levels: {sig_levels}")
+            print(f"   Anderson-Darling p-value: {ad_p_value}")
+            print(f"                  Normality: {ad_normality}")
             print("---------------------------------------------------------------")
             print("")
 
@@ -349,8 +332,7 @@ def make_stats_table(
         "KS p-value",
         "AD Stat",
         "AD p-value",
-        "AD p-value (interpolated)",
-        "Anderson Level",
+        "Normality",
     ]
     stats_table = Table(rows=stats_list, names=col_names)
 

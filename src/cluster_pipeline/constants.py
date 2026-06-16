@@ -66,6 +66,12 @@ DEFAULT_GMM_BROAD_THRESHOLD = 0.05 # Max sigma to keep a component (field); clus
 GAUSSIAN_SIGMA_MULTIPLIER = 3      # +/- n*sigma window for per-Gaussian fit bounds
 
 # ------------------------------------
+# Anderson-Darling Normality Test
+# ------------------------------------
+DEFAULT_AD_MC_SAMPLES = 9999   # Monte-Carlo resamples for the AD-normality p-value (scipy goodness_of_fit)
+DEFAULT_AD_SEED = 1234         # Fixed RNG seed so the Monte-Carlo AD p-value is reproducible run-to-run
+
+# ------------------------------------
 # Imaging
 # ------------------------------------
 DEFAULT_IMAGE_PIXELS = (802, 800)  # Width, height for HiPS optical image queries
