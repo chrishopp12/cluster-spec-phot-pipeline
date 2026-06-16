@@ -52,6 +52,7 @@ def find_segment_circle_crossings(
     center,
     radius_arcmin,
     tolerance=1e-3,
+    detect_grazing=False,
 ):
     """
     Find intersection points between a great-circle segment and a circular boundary on the sky.
@@ -68,9 +69,12 @@ def find_segment_circle_crossings(
         The center of the circle to check for crossings.
     radius_arcmin : float
         Radius of the circle in arcminutes.
-    tolerance : float, optional, must uncomment grazing
-        Minimum arcminute separation from the boundary to consider as a crossing (default: 1e-3).
-        Minimum arcminute separation from the boundary to consider as a crossing (default: 1e-3).
+    tolerance : float, optional
+        Arcminute separation from the boundary to treat as a grazing crossing
+        when ``detect_grazing`` is enabled (default: 1e-3).
+    detect_grazing : bool, optional
+        If True, also report near-tangent (grazing) endpoints as crossings.
+        Off by default (it can flag a grazing point before the true crossing).
 
     Returns
     -------
@@ -101,11 +105,12 @@ def find_segment_circle_crossings(
             angle = center.position_angle(p).to_value(u.deg)
             intersections.append((angle, ra_interp, dec_interp))
 
-        # # Optionally: check for "grazing" (endpoint nearly on circle) Be careful, this will find a grazing point
-        # # before the actual crossing
-        # elif abs(sep1 - radius_arcmin) < tolerance:
-        #     angle = center.position_angle(s1).to_value(u.deg)
-        #     intersections.append((angle, s1.ra.deg, s1.dec.deg))
+        # Optionally detect "grazing" (endpoint nearly on the circle). Off by
+        # default via detect_grazing, since it can flag a grazing point before
+        # the actual crossing.
+        elif detect_grazing and abs(sep1 - radius_arcmin) < tolerance:
+            angle = center.position_angle(s1).to_value(u.deg)
+            intersections.append((angle, s1.ra.deg, s1.dec.deg))
 
     return intersections
 
@@ -117,7 +122,7 @@ def draw_great_circle_segment(
     arc_linestyle='--',
     arc_linewidth=1.5,
     arc_alpha=1.0,
-    arc_color="magenta", #So you know you didn't set it right
+    arc_color="magenta",
     radius=None,
     center=None,
     transform=None,
@@ -139,7 +144,7 @@ def draw_great_circle_segment(
     coord1, coord2 : astropy.coordinates.SkyCoord
         Endpoints of the segment.
     n_points : int, optional
-        Number of points to interpolate along the arc (default: 100).
+        Number of points to interpolate along the arc (default: 1000).
     radius : float or astropy.units.Quantity, optional
         If given, restricts output to points within this radius (arcmin) of `center`.
     center : astropy.coordinates.SkyCoord, optional
@@ -184,7 +189,7 @@ def draw_great_circle_segment(
     omega = np.arccos(np.clip(np.dot(xyz1, xyz2), -1.0, 1.0))
     if np.isclose(omega, 0.0):
         # Points are identical or extremely close; nothing to draw/return
-        return None if return_points else None
+        return None
 
     # Interpolate with spherical linear interpolation (slerp)
     t = np.linspace(0, 1, n_points)
@@ -241,8 +246,6 @@ def plot_bcg_region_arcs(
         Each dict should have 'pair', 'mid', and 'pole'.
     bcg_signatures : dict
         Maps BCG index to list of bisector signatures (+1, -1, 0).
-    colors : list, optional
-        List of colors for each region (defaults to tab10 colormap).
     transform : optional
         Coordinate transform (e.g., ax.get_transform('icrs')).
     n_points : int, optional
@@ -255,8 +258,9 @@ def plot_bcg_region_arcs(
         Alpha for region arcs (default: 1.0).
     verbose : bool, optional
         If True, prints extra debug output and diagnostic points.
-    skip_pair : tuple, optional
-        Pair of BCG indices to skip when plotting arcs for combined regions.
+    combined_indices : list, optional
+        BCG indices whose subclusters are combined into one region; their mutual
+        boundary arcs are skipped.
     **kwargs : dict
         Additional keyword arguments passed to plotting functions.
 
