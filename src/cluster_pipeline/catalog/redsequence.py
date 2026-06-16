@@ -706,10 +706,9 @@ def run_redsequence(
 
     # Coerce numeric columns that may have been read as strings
     numeric_cols = ["gmag", "rmag", "imag", "g_r", "r_i", "g_i", "lum_weight_r", "z", "sigma_z"]
-    for df in (matched_df, full_df, spec_df):
-        present = [c for c in numeric_cols if c in df.columns]
-        if present:
-            coerce_to_numeric(df, present)
+    matched_df = coerce_to_numeric(matched_df, [c for c in numeric_cols if c in matched_df.columns])
+    full_df = coerce_to_numeric(full_df, [c for c in numeric_cols if c in full_df.columns])
+    spec_df = coerce_to_numeric(spec_df, [c for c in numeric_cols if c in spec_df.columns])
 
     # ---- Fit red sequence and select members ----
     redseq_df = fit_and_select_red_sequence(
