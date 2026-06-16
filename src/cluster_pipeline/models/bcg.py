@@ -1,4 +1,8 @@
-"""Brightest Cluster Galaxy (BCG) data class.
+"""
+bcg.py
+
+Brightest Cluster Galaxy (BCG) Data Class
+---------------------------------------------------------
 
 Lightweight container for BCG candidates. There are typically 5-10 per
 cluster, so object overhead is negligible compared to the thousands of

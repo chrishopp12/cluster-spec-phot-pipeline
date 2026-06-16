@@ -4,18 +4,24 @@ redsequence.py
 
 Stage 4: Red Sequence Fitting and Cluster Member Selection
 ----------------------------------------------------------
+
 Fits the red sequence in color-magnitude space using spectroscopically
 confirmed cluster members, then selects photometric members that fall
 on that sequence.  Builds a deduplicated cluster member catalog
 combining spectroscopic and photometric members.
 
 Data products:
-  - Members/cluster_members.csv          Deduplicated member catalog
-  - Members/redseq_{survey}_{color}.csv  Per-fit intermediate results
+  - Members/cluster_members.csv              Deduplicated member catalog
+  - Members/redseq_{survey}_{color_tag}.csv  Per-fit selected catalog
+                                             (color_tag strips hyphens,
+                                             e.g. "g-r" -> "gr")
 
 Column conventions (output member catalog):
   RA, Dec, z, sigma_z, spec_source, gmag, rmag, imag, g_r, r_i, g_i,
   lum_weight_r, phot_source, member_type
+
+Requirements:
+  - numpy, pandas, scikit-learn (sklearn.linear_model.LinearRegression)
 
 Notes:
   - The red sequence is fit with iterative sigma-clipped linear

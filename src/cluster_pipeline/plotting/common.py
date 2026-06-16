@@ -6,9 +6,9 @@ Shared Plotting Utilities
 ---------------------------------------------------------
 
 Provides the foundational helpers that all other plotting modules depend on:
-style configuration, figure persistence, angular/physical scale bars, and
-BCG marker overlays.  These are intentionally kept independent of any
-specific plot type so they can be composed freely.
+style configuration, figure persistence, simple-WCS and KDE-grid construction,
+angular/physical scale bars, and BCG marker overlays.  These are intentionally
+kept independent of any specific plot type so they can be composed freely.
 
 Key functions:
   - setup_plot_style()       Set publication rcParams (call from CLI entry
@@ -16,13 +16,15 @@ Key functions:
   - finalize_figure()        Save figure to PDF via atomic temp-file staging,
                               optionally display, then close
   - resolve_save_path()      Turn (save_path, filename) into a full path
+  - make_simple_wcs()        Build a simple TAN WCS spanning an RA/Dec box
+  - evaluate_kde_grid()      Gaussian-KDE a weighted 2D point set onto a mesh
   - add_scalebar()           Draw a dual-label scale bar (kpc + arcmin) on a
                               WCS axis using the cluster redshift
   - overlay_bcg_markers()    Plot BCG positions as star/circle markers with a
                               color palette and legend
 
 Requirements:
-  - astropy, matplotlib, numpy, pandas
+  - astropy, matplotlib, numpy, pandas, scipy
 
 Notes:
   - finalize_figure() writes to a local temp directory first, then moves

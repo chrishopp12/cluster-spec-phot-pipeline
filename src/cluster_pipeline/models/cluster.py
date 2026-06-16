@@ -1,4 +1,8 @@
-"""Galaxy cluster metadata and path management.
+"""
+cluster.py
+
+Galaxy Cluster Metadata and Path Management
+---------------------------------------------------------
 
 The Cluster class is a lean data container — it holds identity,
 coordinates, analysis parameters, and computes file paths. It does

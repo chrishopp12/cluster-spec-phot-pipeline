@@ -10,11 +10,13 @@ using NED, SIMBAD, and VizieR (redMaPPer catalog). Used during cluster
 initialization to populate config.yaml from a name string alone.
 
 Key functions:
-  - simbad_coord_lookup()     Resolve coordinates from SIMBAD by name
-  - query_ned_coords()        Resolve coordinates from NED by name
-  - query_ned_redshift()      Fetch spectroscopic redshift from NED
-  - query_simbad_redshift()   Fetch redshift from SIMBAD
-  - query_redmapper()         Match against the redMaPPer v6.3 catalog in VizieR
+  - get_name()                     Normalize an identifier to a display name
+  - get_coordinates()              Resolve coordinates via NED, then SIMBAD
+  - get_redshift()                 Resolve redshift via NED/SIMBAD (or BCG fallback)
+  - query_redmapper()              Positional match against redMaPPer (SDSS DR8,
+                                   VizieR J/ApJS/224/1/cat_dr8)
+  - get_redmapper_bcg_candidates() Extract ranked BCG candidates from redMaPPer
+  - get_redmapper_cluster_info()   Extract cluster richness/redshift from redMaPPer
 
 Requirements:
   - astropy, astroquery (NED, SIMBAD, VizieR), numpy

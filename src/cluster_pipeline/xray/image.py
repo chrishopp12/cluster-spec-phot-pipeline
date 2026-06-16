@@ -2,7 +2,7 @@
 """
 image.py
 
-X-ray Image Processing: Hole-Filling and Smoothing
+Stage 8: X-ray Image Processing — Hole-Filling and Smoothing
 ---------------------------------------------------------
 
 Low-level image processing utilities for X-ray FITS data. Handles
@@ -11,6 +11,9 @@ hole-filling via biharmonic inpainting and Gaussian smoothing.
 These functions operate on raw numpy arrays — they do not load FITS
 files or reference the Cluster class. FITS I/O is handled upstream
 by the orchestration layer.
+
+Data products:
+  - None (operates on in-memory arrays; FITS I/O handled by callers).
 
 Requirements:
   - numpy, scipy, scikit-image, astropy

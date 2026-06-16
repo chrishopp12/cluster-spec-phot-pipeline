@@ -2,11 +2,12 @@
 """
 xray.py
 
-X-ray Pipeline Driver: Subcluster Analysis and Visualization
+X-ray Pipeline Driver: Imaging, Redshift, and Subcluster Analysis
 ---------------------------------------------------------
 
-Orchestrates the X-ray analysis pipeline: redshift processing, subcluster
-member assignment, statistical analysis, and multi-panel figure generation.
+Orchestrates the X-ray analysis pipeline: redshift processing, X-ray
+image visualization, subcluster member assignment, statistical analysis,
+and multi-panel figure generation.
 
 Entry points:
   - ``run_xray_imaging(cluster)`` — X-ray processing + redshift analysis

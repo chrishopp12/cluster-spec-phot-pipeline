@@ -1,9 +1,12 @@
 """
-Single source of truth for shared defaults and constants.
+constants.py
 
-Module-specific defaults (query timeouts, tolerances, etc.) stay in their
-respective modules. This file holds values referenced by multiple modules
-or that resolve inconsistencies between files.
+Single Source of Truth for Shared Defaults
+---------------------------------------------------------
+
+Holds defaults and constants referenced by multiple modules, or that
+resolve inconsistencies between files. Module-specific defaults (query
+timeouts, tolerances, etc.) stay in their respective modules.
 """
 
 from astropy.cosmology import FlatLambdaCDM

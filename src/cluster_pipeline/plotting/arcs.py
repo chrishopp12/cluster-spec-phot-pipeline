@@ -2,28 +2,21 @@
 """
 arcs.py
 
-Great-Circle Arc Drawing and Region Fill for Bisector Visualization
+Great-Circle Arc Drawing for Bisector Visualization
 ---------------------------------------------------------
 
-Handles the geometry of drawing bisector boundary arcs on WCS axes and
-filling subcluster regions with translucent color.  Arcs are computed via
-spherical linear interpolation (slerp) and optionally clipped to a
-circular field of view around each subcluster center.
+Handles the geometry of drawing bisector boundary arcs on WCS axes.  Arcs are
+computed via spherical linear interpolation (slerp) and optionally clipped to
+a circular field of view around each subcluster center, with the correct
+boundary segment selected by bisector-signature logic.
 
 Key functions:
-  - draw_great_circle_segment()              Slerp-interpolated arc between
-                                              two SkyCoords, with optional
-                                              radius clipping
-  - plot_bcg_region_arcs()                   Draw dashed arcs outlining each
-                                              BCG's assigned region based on
-                                              bisector signatures
-  - find_segment_circle_crossings()          Locate where a great-circle
-                                              segment crosses a circular
-                                              boundary on the sky
-  - add_region_fill_clipped_to_signature()   Fill the convex hull of a BCG's
-                                              region polygon, including only
-                                              bounding-box corners that match
-                                              the bisector signature
+  - find_segment_circle_crossings()   Locate where a great-circle segment
+                                       crosses a circular boundary on the sky
+  - draw_great_circle_segment()       Slerp-interpolated arc between two
+                                       SkyCoords, with optional radius clipping
+  - plot_bcg_region_arcs()            Draw dashed arcs outlining each BCG's
+                                       assigned region from bisector signatures
 
 Requirements:
   - astropy, scipy, matplotlib, numpy
@@ -32,8 +25,7 @@ Notes:
   - draw_great_circle_segment() always draws the shorter (<= 180 deg) arc.
   - Circle crossings use linear interpolation in separation space, which is
     accurate for the fine step sizes used in practice.
-  - Region filling relies on ConvexHull; non-convex regions will be
-    approximated by their convex envelope.
+  - These functions draw onto a caller-supplied WCS axis; they write no files.
 """
 
 from __future__ import annotations

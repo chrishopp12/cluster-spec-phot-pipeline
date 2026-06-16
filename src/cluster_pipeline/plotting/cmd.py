@@ -4,17 +4,36 @@ cmd.py
 
 Color-Magnitude Diagram Plotting
 ---------------------------------------------------------
-Generates CMD-related plots for galaxy cluster analysis:
 
-    - ``plot_color_magnitude``   -- single CMD scatter with optional spec-z overlay
-    - ``plot_all_color_magnitude`` -- 2x3 grid (PanSTARRS + Legacy, three colors)
-    - ``plot_cmd``               -- CMD with red-sequence fit line and member overlay
-    - ``plot_spatial``           -- RA/Dec spatial map of photometric + spec-z members
-    - ``plot_density_contours``  -- luminosity-weighted KDE density map
-    - ``run_cluster_plots``      -- convenience wrapper that runs the full plot suite
+Generates color-magnitude diagrams and red-sequence diagnostic plots for
+galaxy cluster analysis: per-survey CMDs, spatial member maps, red-sequence
+fit overlays, and luminosity-weighted KDE density maps. ``run_cluster_plots``
+drives the full per-survey/per-color plot suite.
+
+Key functions:
+  - plot_color_magnitude()       Single CMD scatter with optional spec-z overlay
+  - plot_all_color_magnitude()   2x3 grid (PanSTARRS + Legacy, three colors)
+  - plot_spatial()               RA/Dec map of photometric + spec-z members
+  - plot_cmd()                   CMD with red-sequence fit line and member overlay
+  - plot_density_contours()      Luminosity-weighted KDE density map
+  - run_cluster_plots()          Convenience wrapper running the full plot suite
+
+Data products (written to {photometry_path}/Images/):
+  - CMDs.pdf                              2x3 diagnostic CMD grid
+  - {survey}_{color}_{name}_spatial.pdf  Spatial member maps
+  - {survey}_{color}_{name}_cmd.pdf      CMD with red-sequence fit
+  - {survey}_{color}_lum_density.pdf     Luminosity-weighted density map
 
 Supported surveys: Legacy, PanSTARRS
 Supported color bands: g-r, r-i, g-i
+
+Requirements:
+  - astropy, matplotlib, numpy, pandas
+
+Notes:
+  - run_cluster_plots() also calls plotting.optical.plot_optical() for the
+    optical+contour composite, and skips gracefully when required photometry,
+    matched, or member catalogs are missing.
 """
 from __future__ import annotations
 

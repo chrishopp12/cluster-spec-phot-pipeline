@@ -12,16 +12,19 @@ to accept data from several input combinations (raw arrays, FITS paths,
 Cluster objects) and optionally reprojects X-ray data onto an optical WCS.
 
 Key functions:
-  - plot_xray()              Single X-ray image with optional optical background
-  - make_xray_plots()        Suite of raw/filled/smoothed/reprojected images
-                              plus 3x3 and 1x3 summary panels
-  - plot_redshift_overlay()  Spectroscopic galaxies color-coded by redshift on
-                              optical or blank background with contours
-  - make_plots()             Top-level orchestrator that drives all X-ray,
-                              optical, contour, and redshift overlay plots
+  - plot_xray()               Single X-ray image with optional optical background
+  - make_xray_plots()         Suite of raw/filled/smoothed/reprojected images
+                               plus 3x3 and 1x3 summary panels
+  - gaussian_grad_magnitude() Smoothed SB + gradient-magnitude + unsharp-mask
+                               three-panel figure with a surface-brightness cut
+  - plot_redshift_overlay()   Spectroscopic galaxies color-coded by redshift on
+                               optical or blank background with contours
+  - make_plots()              Top-level orchestrator that drives all X-ray,
+                               optical, contour, redshift, and GGM plots
 
 Data products:
-  - Xray/Images/*.pdf        Individual and multi-panel X-ray figures
+  - Xray/Images/*.pdf        Individual and multi-panel X-ray figures, incl.
+                             gauss.pdf (the GGM / unsharp-mask figure)
   - Photometry/Images/*.pdf  Optical and contour overlay figures
   - Redshifts/Images/*.pdf   Redshift scatter overlay
 

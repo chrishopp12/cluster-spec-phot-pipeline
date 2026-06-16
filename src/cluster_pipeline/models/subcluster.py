@@ -1,4 +1,8 @@
-"""Subcluster data class.
+"""
+subcluster.py
+
+Subcluster Data Class
+---------------------------------------------------------
 
 A Subcluster captures the structural relationships between BCGs, the
 spatial region assigned by bisector geometry, and the member galaxies

@@ -5,26 +5,31 @@ builder.py
 Stage 5: Subcluster Configuration Building
 ---------------------------------------------------------
 
-Builds Subcluster objects from BCG candidates and configuration.
+Builds Subcluster objects from BCG candidates and configuration. Each
+subcluster is seeded from a primary BCG, with display and analysis
+properties resolved through a priority chain (CLI kwarg > config.yaml >
+code default). Group definitions are applied last. Returns a
+``list[Subcluster]`` with BCG roles set but no member galaxies yet.
 
-Data products
-~~~~~~~~~~~~~
-- Returns ``list[Subcluster]`` with BCG roles set (no members yet).
-- Persistence is through ``Subcluster.to_config()`` / config.yaml,
-  **not** CSV files.
+Data products:
+  - (none — results persist via Subcluster.to_config() into config.yaml,
+    not CSV files)
 
-Configuration sources (highest to lowest priority)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-1. Per-subcluster kwarg  (``color_2``, ``radius_3``)
-2. Global kwarg          (``color``, ``radius``)
-3. config.yaml value     (``config["subclusters"]``)
-4. Code default          (``DEFAULT_COLORS``, ``DEFAULT_RADIUS_ARCMIN``, etc.)
+Requirements:
+  - pandas
+  - cluster_pipeline models (Cluster, BCG, Subcluster), io.catalogs,
+    config, constants
 
-BCG sources (first match wins)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-1. ``bcgs`` argument passed directly
-2. ``config["bcgs"]`` section in config.yaml
-3. ``BCGs.csv`` on disk (via ``read_bcg_csv``)
+Notes:
+  - Field resolution priority (high to low): per-subcluster kwarg
+    (color_2, radius_3) > global kwarg (color, radius) > config.yaml
+    value > code default (DEFAULT_COLORS, DEFAULT_RADIUS_ARCMIN, etc.).
+  - BCG sources (first match wins): bcgs argument > BCGs.csv on disk,
+    with config["bcgs"] entries layered on top (supplement/override).
+  - "radius" is accepted as a kwarg alias for "radius_arcmin".
+  - Manual BCGs present only in config.yaml (not BCGs.csv) trigger a
+    warning: bisector geometry uses them, but plots reading BCGs.csv
+    will not show them until the matching stage refreshes BCGs.csv.
 """
 
 from __future__ import annotations

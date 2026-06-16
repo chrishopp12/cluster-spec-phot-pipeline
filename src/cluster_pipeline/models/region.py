@@ -1,4 +1,8 @@
-"""Bisector-based sky region for a subcluster.
+"""
+region.py
+
+Bisector-Based Sky Region for a Subcluster
+---------------------------------------------------------
 
 A Region encapsulates the result of the bisector geometry computation
 for one subcluster.  It stores the signature vector (which side of

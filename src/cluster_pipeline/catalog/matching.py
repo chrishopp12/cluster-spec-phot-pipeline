@@ -19,6 +19,10 @@ Column conventions:
   - Photometric:   RA, Dec, gmag, rmag, imag, phot_source,
                    lum_weight_g, lum_weight_r, lum_weight_i, g_r, r_i, g_i
 
+Requirements:
+  - astropy, numpy, pandas
+  - cluster_pipeline.utils.resolvers (redMaPPer BCG candidates via VizieR)
+
 Notes:
   - The combined_redshifts catalog keeps ALL spec sources (matched and
     unmatched to photometry).  The matched catalogs contain ONLY sources

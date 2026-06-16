@@ -1,8 +1,11 @@
 """
-YAML-based per-cluster configuration.
+config.py
 
-Two-layer system:
-  1. Persistent YAML file at ~/Clusters/{id}/config.yaml — single source of truth
+YAML-Based Per-Cluster Configuration
+---------------------------------------------------------
+
+Two-layer configuration system:
+  1. Persistent YAML file at {base_path}/{id}/config.yaml — single source of truth
   2. Ephemeral CLI overrides — merged at runtime, discarded unless --save is used
 
 Usage:

@@ -1,8 +1,12 @@
-"""Cluster initialization: discover and populate cluster metadata.
+"""
+init_cluster.py
 
-This module handles the messy work of finding cluster data from
-multiple sources (config.yaml, clusters.csv, NED/SIMBAD) so the
-Cluster class itself can stay clean.
+Cluster Initialization: Discover and Populate Metadata
+---------------------------------------------------------
+
+Handles the messy work of finding cluster data from multiple sources
+(config.yaml, clusters.csv, NED/SIMBAD) so the Cluster class itself can
+stay clean.
 
 Usage:
     cluster = cluster_init("RMJ 1327")

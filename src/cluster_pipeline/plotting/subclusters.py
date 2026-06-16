@@ -1,23 +1,50 @@
-"""Multi-panel subcluster visualization: members, regions, histograms, and publication figures.
+#!/usr/bin/env python3
+"""
+subclusters.py
 
-Functions
----------
-plot_subcluster_members_and_regions
-    Scatter members and draw bisector arcs on an optical WCS image.
-plot_redshift_and_subclusters_figure
-    Two-panel: redshift overlay + subcluster regions.
-plot_stacked_redshift_histograms
-    Vertically stacked redshift/velocity histograms per subcluster.
-plot_redshift_histogram_heatmap
-    Optical + colormap redshift scatter with histogram inset.
-plot_2panel_optical_contours
-    Plain optical vs. optical + contour overlays.
-plot_3panel_optical_subclusters_figure
-    Three-panel: optical, contours, subcluster regions.
-plot_combined_4panel_figure
-    2x2 publication figure combining contour, redshift, and subcluster panels.
-plot_subcluster_regions_and_histograms
-    Stacked histograms above a spatial regions panel.
+Subcluster Multi-Panel Publication Figures
+---------------------------------------------------------
+
+The pipeline's primary figure factory: composites optical images, X-ray and
+luminosity-density contours, redshift-coded member scatters, bisector region
+arcs, and per-subcluster redshift/velocity histograms into the single- and
+multi-panel publication figures.  Most functions stack the lower-level
+plotters from plotting.optical / plotting.xray / plotting.arcs; the GMM and
+velocity diagnostics were relocated here from subclusters/statistics.py.
+
+Key functions:
+  - plot_subcluster_members_and_regions()      Members + bisector arcs on optical
+  - plot_redshift_and_subclusters_figure()     2-panel: redshift overlay + regions
+  - plot_stacked_redshift_histograms()         Stacked per-subcluster z histograms
+  - plot_redshift_histogram_heatmap()          Optical z-scatter + histogram inset
+  - plot_2panel_optical_contours()             Plain optical vs. optical+contours
+  - plot_3panel_optical_subclusters_figure()   3-panel: optical, contours, regions
+  - plot_combined_4panel_figure()              2x2 publication composite
+  - plot_subcluster_regions_and_histograms()   Stacked histograms over regions panel
+  - plot_gmm_histogram()                       Field/cluster z hist + GMM overlays
+  - plot_stacked_velocity_histograms()         Stacked per-subcluster velocity hists
+
+Data products (written via finalize_figure to cluster.image_path / save_path):
+  - subcluster_regions.pdf                  Members + region arcs
+  - subcluster_z_scatter_{vert,hor}.pdf     Redshift overlay + regions (2-panel)
+  - stacked_redshifts.pdf                   Stacked per-subcluster z histograms
+  - redshifts_hist_hmap.pdf                 Redshift heatmap + histogram inset
+  - 2panel_optical_contours_{vert,hor}.pdf  Optical vs. optical+contours
+  - cluster_3panel_{vert,hor}.pdf           Optical / contours / regions (3-panel)
+  - combined_4panel.pdf                     2x2 publication composite
+  - subcluster_histograms.pdf               Histograms over spatial-regions panel
+  - gmm_histogram.pdf                       GMM-overlaid redshift histogram
+  - velocity_histograms.pdf                 Stacked velocity histograms
+
+Requirements:
+  - astropy, scipy, matplotlib, numpy, pandas
+
+Notes:
+  - Higher-level panels delegate to the single-panel plotters and pass shared
+    fig/ax objects, so namespaced **kwargs (density_*, xray_*, scalebar_*,
+    subcluster_*) flow through to the underlying overlay calls.
+  - _xray_or_none() lets optical-only runs skip X-ray contours gracefully;
+    _get_optical() lazily fetches the optical cutout via io.images.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ Table types:
   - Spectroscopic redshift tables (full catalog + new DEIMOS)
   - BCG information tables
   - Cluster summary one-liners
-  - Subcluster statistics (added during Stage 7 refactoring)
+  - Subcluster statistics
 
 Requirements:
   - pandas, numpy

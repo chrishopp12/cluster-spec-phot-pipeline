@@ -5,23 +5,33 @@ statistics.py
 Stage 7: Subcluster Statistics and Redshift Analysis
 ---------------------------------------------------------
 
-Statistical analysis for subclusters and cluster redshift distributions:
-GMM fitting, velocity dispersions, normality tests, and group analysis.
+Statistical analysis of subclusters and cluster redshift distributions:
+GMM fitting with BIC model selection, biweight velocity dispersions,
+KS / Anderson-Darling normality tests, BCG velocity offsets, and group
+kinematics. Generates redshift/velocity histograms and a LaTeX
+deluxetable of subcluster properties.
 
-Produces
---------
-- Per-subcluster velocity dispersions and mean redshifts
-- KS and Anderson-Darling normality tests per GMM component
-- GMM redshift histograms with inset subcluster panels
-- Stacked velocity histograms
-- LaTeX deluxetable of subcluster properties
-- Pairwise BCG-BCG velocity-difference CSV
+Data products:
+  - subcluster_stats_field.csv      Per-component normality stats (field)
+  - subcluster_stats_cluster.csv    Per-component normality stats (cluster)
+  - gmm_bic.csv                     GMM BIC vs. n_components (cluster fit)
+  - Tables/{id}_subclusters.tex     Subcluster summary deluxetable
+  - Tables/BCG_velocity_pairs.csv   Pairwise BCG-BCG velocity differences
+  - subclusters.csv                 Per-subcluster definitions + BCG dv
+  - Images/*.pdf                    GMM/velocity histograms, per-component stats
 
-Requirements
-------------
-- Combined spectroscopic redshift catalog (combined_redshifts.csv)
-- BCGs.csv with columns: BCG_priority, z, sigma_z
-- Subcluster objects with populated spec_members DataFrames
+Requirements:
+  - numpy, pandas, scipy, scikit-learn, astropy, matplotlib
+  - Combined spectroscopic redshift catalog (combined_redshifts.csv)
+  - BCGs.csv with columns: BCG_priority, z, sigma_z
+  - Subcluster objects with populated spec_members DataFrames
+
+Notes:
+  - Velocity dispersions use astropy biweight_location / midvariance
+    (outlier-robust) rather than plain mean/std.
+  - Delta-v uses the cluster rest frame: dv = c*(z2-z1)/(1+z_mean).
+  - Plotting is delegated to plotting.subclusters via lazy import to keep
+    analysis and visualization separated.
 """
 
 from __future__ import annotations

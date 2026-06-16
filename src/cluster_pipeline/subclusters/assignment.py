@@ -2,12 +2,33 @@
 """
 assignment.py
 
-Subcluster Member Assignment via Bisector Signature Matching
+Stage 6: Subcluster Member Assignment
 ---------------------------------------------------------
-Assigns galaxies to subclusters based on bisector geometry, radial
-cuts, and (optional) redshift bounds.  Operates on Subcluster objects
-and populates their ``region``, ``spec_members``, and ``phot_members``
-attributes in-place.
+
+Assigns galaxies to subclusters via bisector-signature matching, then
+applies per-subcluster radial and (optional) redshift cuts. Operates on
+Subcluster objects, populating their ``region``, ``spec_members``, and
+``phot_members`` attributes in place, and writes per-subcluster member
+catalogs (including optional combined-group catalogs) to disk.
+
+Data products:
+  - Members/subcluster_{label}_members.csv        Spectroscopic members
+  - Members/subcluster_{label}_phot_members.csv   Photometric members
+  - Members/subcluster_{i}_{j}_members.csv        Combined-group spec (optional)
+  - Members/subcluster_{i}_{j}_phot_members.csv   Combined-group phot (optional)
+
+Requirements:
+  - numpy, pandas
+  - cluster_pipeline.subclusters.geometry (bisector signatures),
+    models.region, utils.coordinates
+
+Notes:
+  - A galaxy is assigned to the BCG region whose nonzero bisector
+    signature it matches; radial and redshift cuts are applied afterward.
+  - In the spectroscopic radius/z cut, galaxies with no finite z are kept
+    if they fall within the radius (only galaxies with a z outside the
+    range are rejected).
+  - Combined-group catalogs are written only when combine_groups is given.
 """
 
 from __future__ import annotations
