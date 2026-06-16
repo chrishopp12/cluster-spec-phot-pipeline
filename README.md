@@ -1,6 +1,6 @@
 # Cluster Pipeline
 
-Uniform first-look analysis pipeline for galaxy cluster merger candidates. Designed for the [X-SORTER](https://arxiv.org/) (X-ray Survey Of meRging clusTErs in Redmapper) project, but broadly applicable to multi-wavelength cluster analysis.
+Uniform first-look analysis pipeline for galaxy cluster merger candidates. Designed for the [X-SORTER](https://doi.org/10.48550/arXiv.2603.05596) (X-ray Survey Of meRging clusTErs in Redmapper) project, but broadly applicable to multi-wavelength cluster analysis.
 
 Given a cluster identifier, the pipeline retrieves archival spectroscopy and photometry, fits the red sequence, identifies subclusters via BCG-bisector geometry, computes velocity dispersions, and generates publication-ready figures with X-ray overlays.
 
@@ -22,21 +22,21 @@ This installs the `cluster-pipeline` command-line tool.
 
 ```bash
 # Initialize a new cluster
-cluster-pipeline init "RMJ 1327" --ra 201.85 --dec 53.78 --redshift 0.254
+cluster-pipeline init RMJ_0219 --ra 34.9673 --dec 1.4978 --redshift 0.365
 
 # Run the full pipeline (all 9 stages)
-cluster-pipeline run "RMJ 1327"
+cluster-pipeline run RMJ_0219
 
-# Run specific stages
-cluster-pipeline run "RMJ 1327" --stages spec phot matching redseq
-cluster-pipeline run "RMJ 1327" --stages subclusters --subclusters 2 6 7
-cluster-pipeline run "RMJ 1327" --stages xray
+# Run specific stages (comma-separated, or repeat the flag)
+cluster-pipeline run RMJ_0219 --stages spec,phot,matching,redseq
+cluster-pipeline run RMJ_0219 --stages subclusters --subclusters 1,2
+cluster-pipeline run RMJ_0219 --stages xray
 
 # List known clusters
 cluster-pipeline list
 
 # Show cluster summary
-cluster-pipeline info "RMJ 1327"
+cluster-pipeline info RMJ_0219
 ```
 
 ## Pipeline Stages
@@ -57,14 +57,14 @@ By default, all stages run. Use `--stages` to select a subset.
 
 ## Configuration
 
-Each cluster has a YAML config file at `~/Clusters/{id}/config.yaml`. The config stores cluster identity, analysis parameters, BCG definitions, and subcluster groupings.
+Each cluster has a YAML config file at `{base_path}/{id}/config.yaml`. The config stores cluster identity, analysis parameters, BCG definitions, and subcluster groupings.
 
 ```bash
 # Override parameters for a single run
-cluster-pipeline run "RMJ 1327" --fov 8.0 --redshift 0.255
+cluster-pipeline run RMJ_0219 --fov 8.0 --redshift 0.366
 
 # Persist overrides to config.yaml
-cluster-pipeline run "RMJ 1327" --fov 8.0 --save
+cluster-pipeline run RMJ_0219 --fov 8.0 --save
 ```
 
 ### Key Parameters
@@ -77,13 +77,15 @@ cluster-pipeline run "RMJ 1327" --fov 8.0 --save
 | `--dec-offset` | Dec offset for image centering (arcmin) | 0.0 |
 | `--psf` | PSF smoothing for X-ray images (arcsec) | 8.0 |
 | `--survey` | Photometry survey (`legacy` or `panstarrs`) | `legacy` |
-| `--radius` | Subcluster search radius (Mpc) | 2.5 |
+| `--radius` | Subcluster search radius (arcmin) | 2.5 |
 | `--z-min` / `--z-max` | Redshift range for member selection | redshift +/- 0.15 |
 
 ## Data Layout
 
+Each cluster lives in its own directory under the base path (resolved as `--base-path` > `CLUSTER_BASE_PATH` env var > `./clusters`):
+
 ```
-~/Clusters/{cluster_id}/
+{base_path}/{cluster_id}/
     config.yaml           Analysis configuration
     BCGs.csv              BCG catalog with photometry
     Redshifts/            Per-source + combined redshift catalogs
