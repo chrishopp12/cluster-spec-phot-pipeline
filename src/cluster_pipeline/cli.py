@@ -26,6 +26,45 @@ from cluster_pipeline.plotting.common import setup_plot_style
 from cluster_pipeline.constants import PIPELINE_STAGES
 
 
+# ====================================================================
+# Multi-value option parsing
+# ====================================================================
+
+def _split_commas(value) -> list[str]:
+    """Flatten a click ``multiple=True`` value, splitting each item on commas.
+
+    Accepts repeated flags (``--stages spec --stages phot``), a single
+    comma-separated value (``--stages spec,phot``), or any mix of the two.
+    """
+    tokens: list[str] = []
+    for item in value:
+        tokens.extend(piece.strip() for piece in str(item).split(",") if piece.strip())
+    return tokens
+
+
+def _stages_callback(ctx, param, value) -> tuple[str, ...]:
+    """Validate --stages tokens against PIPELINE_STAGES (case-insensitive)."""
+    stages = [s.lower() for s in _split_commas(value)]
+    invalid = [s for s in stages if s not in PIPELINE_STAGES]
+    if invalid:
+        raise click.BadParameter(
+            f"invalid stage(s): {', '.join(invalid)}. "
+            f"Choose from: {', '.join(PIPELINE_STAGES)}."
+        )
+    return tuple(stages)
+
+
+def _subclusters_callback(ctx, param, value) -> tuple[int, ...]:
+    """Parse --subclusters tokens into integer BCG IDs."""
+    ids: list[int] = []
+    for tok in _split_commas(value):
+        try:
+            ids.append(int(tok))
+        except ValueError:
+            raise click.BadParameter(f"subcluster IDs must be integers, got: {tok!r}")
+    return tuple(ids)
+
+
 @click.group()
 @click.version_option(package_name="cluster-pipeline")
 def main():
@@ -41,9 +80,9 @@ def main():
 @click.argument("cluster_id")
 @click.option("--base-path", type=click.Path(exists=True, file_okay=False),
               default=None, help="Base directory for cluster data.")
-@click.option("--stages", multiple=True,
-              type=click.Choice(PIPELINE_STAGES, case_sensitive=False),
-              help="Pipeline stages to run (default: all).")
+@click.option("--stages", multiple=True, callback=_stages_callback, metavar="STAGE",
+              help="Stages to run, comma-separated or via repeated flags "
+                   "(default: all). Choices: " + ", ".join(PIPELINE_STAGES) + ".")
 @click.option("--save", is_flag=True, help="Persist CLI overrides back to config.yaml.")
 @click.option("--save-plots/--no-save-plots", default=True, help="Save generated figures (default: on).")
 @click.option("--show-plots/--no-show-plots", default=False, help="Display figures interactively (default: off).")
@@ -63,9 +102,10 @@ def main():
 @click.option("--psf", type=float, default=None, help="PSF smoothing (arcsec).")
 @click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None)
 # Xray / subcluster options
-@click.option("--subclusters", multiple=True, type=int,
-              help="BCG indices for subclusters (e.g., --subclusters 2 --subclusters 6).")
-@click.option("--radius", type=float, default=None, help="Subcluster search radius (Mpc).")
+@click.option("--subclusters", multiple=True, callback=_subclusters_callback, metavar="ID",
+              help="BCG indices for subclusters (e.g., --subclusters 2,6 or "
+                   "--subclusters 2 --subclusters 6).")
+@click.option("--radius", type=float, default=None, help="Subcluster search radius (arcmin).")
 def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         verbose, diagnostics,
         ra, dec, redshift, z_min, z_max, fov, fov_full, ra_offset, dec_offset,
