@@ -543,6 +543,47 @@ def _write_bcg_pairs_csv(bcg_df, out_csv):
     pd.DataFrame(rows).to_csv(out_csv, index=False)
 
 
+def _write_subclusters_csv(cluster, subclusters, bcg_dv_kms, bcg_dv_err_kms):
+    """Write subclusters.csv: per-subcluster definitions, group info, and BCG dv.
+
+    Recreates the original-pipeline ``subclusters.csv`` artifact fresh from the
+    Subcluster objects (defined in config.yaml) plus the computed per-subcluster
+    BCG velocity offsets.
+    """
+    # group_id -> z-range of that group's dominant subcluster
+    group_zrange = {
+        sub.group_id: sub.z_range
+        for sub in subclusters
+        if sub.group_id is not None and sub.is_dominant
+    }
+    rows = []
+    for i, sub in enumerate(subclusters):
+        gzr = group_zrange.get(sub.group_id, sub.z_range)
+        rows.append({
+            "bcg_id":            sub.bcg_id,
+            "bcg_label":         sub.label,
+            "color":             sub.color,
+            "radius":            sub.radius_arcmin,
+            "z_range_min":       sub.z_range[0],
+            "z_range_max":       sub.z_range[1],
+            "group_id":          sub.group_id,
+            "is_dominant":       int(sub.is_dominant),
+            "group_members":     str(tuple(sub.group_members)) if sub.group_members else "",
+            "group_label":       sub.group_label,
+            "group_color":       sub.group_color,
+            "group_z_range_min": gzr[0],
+            "group_z_range_max": gzr[1],
+            "bcg_dv_kms":        bcg_dv_kms[i],
+            "bcg_dv_err_kms":    bcg_dv_err_kms[i],
+        })
+    pd.DataFrame(rows, columns=[
+        "bcg_id", "bcg_label", "color", "radius", "z_range_min", "z_range_max",
+        "group_id", "is_dominant", "group_members", "group_label", "group_color",
+        "group_z_range_min", "group_z_range_max", "bcg_dv_kms", "bcg_dv_err_kms",
+    ]).to_csv(cluster.subcluster_file, index=False)
+    print(f"Subclusters summary written to {cluster.subcluster_file}")
+
+
 def build_subcluster_summary(
     cluster,
     subclusters: list,
@@ -557,7 +598,7 @@ def build_subcluster_summary(
       - Computes BCG delta v relative to the subcluster mean and its uncertainty
       - Writes a LaTeX deluxetable (.tex) into cluster.tables_path
       - Writes pairwise BCG-BCG delta v CSV into cluster.tables_path
-      - Optionally updates subclusters.csv with bcg_dv_kms and bcg_dv_err_kms
+      - Writes subclusters.csv (per-subcluster definitions + bcg_dv) into cluster_path
 
     Parameters
     ----------
@@ -568,12 +609,12 @@ def build_subcluster_summary(
           - cluster_path : str -> cluster data directory
           - identifier : str   -> e.g., "RMJ 2135"
           - spec_file : str -> path to combined spec catalog
-          - subcluster_file : str (optional) -> path to subclusters.csv for updates
+          - subcluster_file : str -> output path for subclusters.csv
     subclusters : list[Subcluster]
         Subcluster objects with spec_members populated.
     update_csv : bool
-        If True and cluster.subcluster_file exists, add/overwrite bcg_dv_kms and
-        bcg_dv_err_kms columns.
+        If True, (re)write subclusters.csv with the per-subcluster summary
+        (definitions, group info, and BCG velocity offsets). [default: True]
 
     Returns
     -------
@@ -662,26 +703,9 @@ def build_subcluster_summary(
     pairs_csv = os.path.join(tables_path, "BCG_velocity_pairs.csv")
     _write_bcg_pairs_csv(bcg_df, pairs_csv)
 
-    # Optional: update subclusters.csv in place
-    if update_csv and getattr(cluster, "subcluster_file", None) and os.path.exists(cluster.subcluster_file):
-        try:
-            sdf = pd.read_csv(cluster.subcluster_file)
-            # Map by bcg_id if present; else by subcluster index order
-            if "bcg_id" in sdf.columns:
-                id_to_dv = {}
-                id_to_dverr = {}
-                for i, sub in enumerate(subclusters):
-                    id_to_dv[sub.bcg_id] = bcg_dv_kms[i]
-                    id_to_dverr[sub.bcg_id] = bcg_dv_err_kms[i]
-                sdf["bcg_dv_kms"] = sdf["bcg_id"].map(id_to_dv)
-                sdf["bcg_dv_err_kms"] = sdf["bcg_id"].map(id_to_dverr)
-            else:
-                # Fallback: assume row order corresponds to subcluster order
-                sdf["bcg_dv_kms"] = pd.Series(bcg_dv_kms[:len(sdf)])
-                sdf["bcg_dv_err_kms"] = pd.Series(bcg_dv_err_kms[:len(sdf)])
-            sdf.to_csv(cluster.subcluster_file, index=False)
-        except Exception as e:
-            print(f"Warning: could not update subclusters.csv with BCG dv columns: {e}")
+    # Write subclusters.csv: per-subcluster definitions + BCG velocity offsets
+    if update_csv:
+        _write_subclusters_csv(cluster, subclusters, bcg_dv_kms, bcg_dv_err_kms)
 
     return {
         "tex_path": tex_path,
