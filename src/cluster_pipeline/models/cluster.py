@@ -35,10 +35,10 @@ from cluster_pipeline.constants import (
 )
 
 # Base path for cluster data directories
-# Default: ~/Desktop/Wittman_Research/Clusters
-# Override with CLUSTER_BASE_PATH env var or --base-path CLI flag
+# Set via the CLUSTER_BASE_PATH env var (recommended) or the --base-path CLI flag;
+# falls back to ./clusters relative to the working directory.
 _BASE_PATH_ENV_VAR = "CLUSTER_BASE_PATH"
-_DEFAULT_CLUSTER_PATH = Path("~/Desktop/Wittman_Research/Clusters")
+_DEFAULT_CLUSTER_PATH = Path("clusters")
 DEFAULT_BASE_PATH = Path(
     os.environ.get(_BASE_PATH_ENV_VAR, _DEFAULT_CLUSTER_PATH)
 ).expanduser().resolve()
@@ -141,6 +141,10 @@ class Cluster:
     @property
     def bcg_file(self) -> str:
         return os.path.join(self.cluster_path, "BCGs.csv")
+
+    @property
+    def subcluster_file(self) -> str:
+        return os.path.join(self.cluster_path, "subclusters.csv")
 
     # ------------------------------------------------------------------
     # Coordinates

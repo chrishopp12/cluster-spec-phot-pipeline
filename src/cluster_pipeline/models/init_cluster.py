@@ -61,7 +61,8 @@ def cluster_init(
     identifier : str
         Cluster name or identifier.
     base_path : Path or str, optional
-        Base directory for cluster data. Defaults to ~/XSorter/Clusters/.
+        Base directory for cluster data. Defaults to the package base path
+        (override with the CLUSTER_BASE_PATH env var or --base-path).
     verbose : bool
         Print progress messages.
     **overrides
@@ -88,7 +89,7 @@ def cluster_init(
     # --- Source 2: config.yaml ---
     cfg = load_config(cluster.cluster_path)
     if cfg:
-        if verbose and cfg:
+        if verbose:
             print(f"  [config.yaml] loaded from {cluster.config_path}")
         _merge_source(values, cfg, verbose=verbose, label="config.yaml")
 
