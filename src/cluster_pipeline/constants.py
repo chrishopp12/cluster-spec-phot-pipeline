@@ -33,6 +33,24 @@ DEFAULT_XRAY_FILENAME = "comb-adaptimsky-400-1100.fits"  # Standard XMM combined
 DEFAULT_PSF_ARCSEC = 8.0  # PSF smoothing in arcsec
 
 # ------------------------------------
+# Radio
+# ------------------------------------
+DEFAULT_RADIO_FILENAME = None            # Radio FITS path relative to Radio/ (set per-cluster in config.yaml)
+DEFAULT_RADIO_FOV_ARCMIN = None          # Radio overlay zoom FOV in arcmin; None -> cluster.fov
+DEFAULT_RADIO_START_SIGMA = 4.0          # Lowest radio contour, in units of sigma above the noise
+DEFAULT_RADIO_N_LEVELS = 12              # Number of radio contour levels
+DEFAULT_RADIO_CONTOUR_STEP = 2 ** 0.5    # Geometric ratio between successive radio contour levels (sqrt 2)
+DEFAULT_RADIO_SMOOTH_PIX = 0.0           # Gaussian smoothing (pixels) applied before contouring (0 = none)
+DEFAULT_RADIO_COLOR = "white"            # Radio contour color
+DEFAULT_RADIO_LINEWIDTH = 0.6            # Radio contour linewidth (points)
+DEFAULT_RADIO_OUTLINE = True             # Draw a contrasting halo stroke behind each radio contour
+DEFAULT_RADIO_OUTLINE_COLOR = "black"    # Halo stroke color
+DEFAULT_RADIO_OUTLINE_EXTRA = 1.6        # Extra linewidth (points) for the halo stroke beyond the contour
+DEFAULT_RADIO_MASK_COMPACT = False       # NaN-mask catalogued compact sources before contouring
+DEFAULT_RADIO_MASK_RADIUS_ARCSEC = 30.0  # Floor mask radius per compact source (arcsec)
+DEFAULT_RADIO_MASK_SIZE_MULTIPLIER = 1.5 # Mask radius = max(floor, multiplier * source major axis)
+
+# ------------------------------------
 # Contours & Density
 # ------------------------------------
 DEFAULT_CONTOUR_LEVELS = (0.5, 0, 12)  # (n_std_bottom, n_std_top, n_levels) for X-ray contours
@@ -111,7 +129,7 @@ DEFAULT_MARKER_SIZE_BCG = 200      # Scatter marker size for BCG overlays
 # ------------------------------------
 # Pipeline
 # ------------------------------------
-PIPELINE_STAGES = ("spec", "phot", "matching", "redseq", "subclusters", "xray")
+PIPELINE_STAGES = ("spec", "phot", "matching", "redseq", "subclusters", "xray", "radio")
 
 # ------------------------------------
 # Coordinates

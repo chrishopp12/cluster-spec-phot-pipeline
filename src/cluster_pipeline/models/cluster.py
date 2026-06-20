@@ -36,6 +36,16 @@ from cluster_pipeline.constants import (
     DEFAULT_MAG_MIN,
     DEFAULT_Z_PAD,
     DEFAULT_XRAY_FILENAME,
+    DEFAULT_LEGEND_LOC,
+    DEFAULT_RADIO_FILENAME,
+    DEFAULT_RADIO_FOV_ARCMIN,
+    DEFAULT_RADIO_START_SIGMA,
+    DEFAULT_RADIO_N_LEVELS,
+    DEFAULT_RADIO_CONTOUR_STEP,
+    DEFAULT_RADIO_SMOOTH_PIX,
+    DEFAULT_RADIO_COLOR,
+    DEFAULT_RADIO_LINEWIDTH,
+    DEFAULT_RADIO_MASK_COMPACT,
 )
 
 # Base path for cluster data directories
@@ -88,6 +98,19 @@ class Cluster:
     phot_levels: int = DEFAULT_PHOT_LEVELS
     phot_skip: int = DEFAULT_PHOT_SKIP
     contour_levels: tuple[float, float, float] = DEFAULT_CONTOUR_LEVELS
+    legend_loc: str = DEFAULT_LEGEND_LOC  # legend corner for field figures (optical, X-ray, radio)
+
+    # --- Radio parameters (from config.yaml or defaults) ---
+    radio_filename: str | None = DEFAULT_RADIO_FILENAME
+    radio_fov: float | None = DEFAULT_RADIO_FOV_ARCMIN
+    radio_start_sigma: float = DEFAULT_RADIO_START_SIGMA
+    radio_n_levels: int = DEFAULT_RADIO_N_LEVELS
+    radio_contour_step: float = DEFAULT_RADIO_CONTOUR_STEP
+    radio_smooth_pix: float = DEFAULT_RADIO_SMOOTH_PIX
+    radio_color: str = DEFAULT_RADIO_COLOR
+    radio_linewidth: float = DEFAULT_RADIO_LINEWIDTH
+    radio_mask_compact: bool = DEFAULT_RADIO_MASK_COMPACT
+    radio_mask_catalog: str | None = None
 
     # --- Cached ---
     _coords: SkyCoord | None = field(default=None, init=False, repr=False)
@@ -117,6 +140,10 @@ class Cluster:
         return os.path.join(self.cluster_path, "Xray")
 
     @property
+    def radio_path(self) -> str:
+        return os.path.join(self.cluster_path, "Radio")
+
+    @property
     def image_path(self) -> str:
         return os.path.join(self.cluster_path, "Images")
 
@@ -137,6 +164,24 @@ class Cluster:
     @property
     def xray_file(self) -> str:
         return os.path.join(self.xray_path, DEFAULT_XRAY_FILENAME)
+
+    @property
+    def radio_file(self) -> str | None:
+        """Path to the radio FITS under Radio/, or None if none is configured.
+
+        ``radio_filename`` may include a sub-path (e.g. a team-product
+        directory), which ``os.path.join`` resolves relative to ``radio_path``.
+        """
+        if not self.radio_filename:
+            return None
+        return os.path.join(self.radio_path, self.radio_filename)
+
+    @property
+    def radio_catalog_file(self) -> str | None:
+        """Path to the compact-source catalog under Radio/, or None if unset."""
+        if not self.radio_mask_catalog:
+            return None
+        return os.path.join(self.radio_path, self.radio_mask_catalog)
 
     @property
     def spec_file(self) -> str:
@@ -242,6 +287,7 @@ class Cluster:
             self.redshift_path,
             self.photometry_path,
             self.xray_path,
+            self.radio_path,
             self.image_path,
             self.members_path,
             self.tables_path,

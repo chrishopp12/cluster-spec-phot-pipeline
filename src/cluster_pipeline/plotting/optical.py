@@ -6,9 +6,9 @@ Optical Image Plotting with Contour Overlays
 ---------------------------------------------------------
 
 Displays WCS-projected optical images and composites X-ray surface
-brightness contours, photometric galaxy density contours, BCG markers,
-and scale bars on top of them.  Used directly by nearly every multi-panel
-figure in the pipeline.
+brightness contours, photometric galaxy density contours, radio continuum
+contours, BCG markers, and scale bars on top of them.  Used directly by
+nearly every multi-panel figure in the pipeline.
 
 Key functions:
   - plot_optical()           WCS optical image with optional contour and BCG
@@ -17,6 +17,8 @@ Key functions:
                               to the optical WCS
   - add_density_contours()   KDE-based luminosity-weighted galaxy density
                               contours from a photometric catalog
+  - add_radio_contours()     Geometric-spaced radio continuum contours from a
+                              radio FITS image, aligned to the optical WCS
   - define_contours_fov()    Compute contour levels restricted to the optical
                               field of view (avoids edge artifacts)
 
@@ -38,13 +40,21 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 from matplotlib.lines import Line2D
 from astropy.io import fits
 from astropy.wcs import WCS
+from scipy.ndimage import gaussian_filter
 
 from cluster_pipeline.utils import pop_prefixed_kwargs
 from cluster_pipeline.utils.coordinates import arcsec_to_pixel_std
 from cluster_pipeline.xray.image import smoothing
+from cluster_pipeline.radio.image import (
+    load_radio_image,
+    mask_compact_sources,
+    radio_contour_levels,
+    robust_rms,
+)
 from cluster_pipeline.io.catalogs import load_photo_coords
 from cluster_pipeline.plotting.common import (
     finalize_figure,
@@ -52,7 +62,22 @@ from cluster_pipeline.plotting.common import (
     overlay_bcg_markers,
     evaluate_kde_grid,
 )
-from cluster_pipeline.constants import DEFAULT_PSF_ARCSEC, DEFAULT_CONTOUR_LEVELS, DEFAULT_BANDWIDTH, DEFAULT_KDE_GRID_SIZE
+from cluster_pipeline.constants import (
+    DEFAULT_PSF_ARCSEC,
+    DEFAULT_CONTOUR_LEVELS,
+    DEFAULT_BANDWIDTH,
+    DEFAULT_KDE_GRID_SIZE,
+    DEFAULT_LEGEND_LOC,
+    DEFAULT_RADIO_COLOR,
+    DEFAULT_RADIO_N_LEVELS,
+    DEFAULT_RADIO_START_SIGMA,
+    DEFAULT_RADIO_CONTOUR_STEP,
+    DEFAULT_RADIO_SMOOTH_PIX,
+    DEFAULT_RADIO_LINEWIDTH,
+    DEFAULT_RADIO_OUTLINE,
+    DEFAULT_RADIO_OUTLINE_COLOR,
+    DEFAULT_RADIO_OUTLINE_EXTRA,
+)
 
 if TYPE_CHECKING:
     from cluster_pipeline.models.cluster import Cluster
@@ -306,6 +331,151 @@ def add_density_contours(
     return contour_artist
 
 
+def add_radio_contours(
+        ax: plt.Axes,
+        radio_fits_file: str,
+        color: str = DEFAULT_RADIO_COLOR,
+        n_levels: int = DEFAULT_RADIO_N_LEVELS,
+        start_sigma: float = DEFAULT_RADIO_START_SIGMA,
+        contour_step: float = DEFAULT_RADIO_CONTOUR_STEP,
+        smooth_pix: float = DEFAULT_RADIO_SMOOTH_PIX,
+        linewidth: float = DEFAULT_RADIO_LINEWIDTH,
+        outline: bool = DEFAULT_RADIO_OUTLINE,
+        outline_color: str = DEFAULT_RADIO_OUTLINE_COLOR,
+        outline_extra: float = DEFAULT_RADIO_OUTLINE_EXTRA,
+        mask_catalog: str | None = None,
+        cluster: "Cluster" | None = None,
+        **kwargs,
+    ):
+    """
+    Adds geometric-spaced radio continuum contours to an axis, aligned to an optical WCS.
+
+    Contour levels follow ``start_sigma * sigma * contour_step ** k`` for
+    ``k = 0 .. n_levels - 1``, where ``sigma`` is the robust (MAD-based) noise
+    of the radio map. The default sqrt(2) step gives the canonical
+    (3, 6, 12, 24, ...) sigma ladder.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        Axis on which to plot radio contours (should be WCS-aware).
+    radio_fits_file : str
+        Path to the radio FITS image.
+    color : str, optional
+        Contour color (default: 'white').
+    n_levels : int, optional
+        Number of contour levels (default: 12).
+    start_sigma : float, optional
+        Lowest contour in units of sigma above the noise (default: 4.0).
+    contour_step : float, optional
+        Geometric ratio between successive levels (default: sqrt 2).
+    smooth_pix : float, optional
+        Gaussian smoothing kernel in pixels applied before contouring; 0
+        disables smoothing (default: 0.0).
+    linewidth : float, optional
+        Contour line width in points (default: 0.6).
+    outline : bool, optional
+        Draw a contrasting halo stroke behind each contour (default: True).
+    outline_color : str, optional
+        Halo stroke color (default: 'black').
+    outline_extra : float, optional
+        Extra line width (points) for the halo beyond ``linewidth``; the halo
+        is ``outline_extra / 2`` points per side (default: 1.6).
+    mask_catalog : str or None, optional
+        Compact-source catalog to NaN-mask before contouring. If None and the
+        cluster enables masking, ``cluster.radio_catalog_file`` is used.
+    cluster : Cluster, optional
+        Cluster object providing default radio parameters.
+    **kwargs
+        Recognized namespaced overrides take precedence over the corresponding
+        function arguments:
+            - radio_color, radio_n_levels, radio_start_sigma, radio_contour_step
+            - radio_smooth_pix, radio_linewidth
+            - radio_outline, radio_outline_color, radio_outline_extra
+            - radio_* : any ax.contour() kwarg
+            - radio_kwargs : dict
+
+    Returns
+    -------
+    contour_artist : QuadContourSet or None
+        The matplotlib contour artist, or None if the noise could not be
+        estimated (degenerate map).
+
+    Notes
+    -----
+    - Radio parameters cascade: explicit ``radio_*`` kwarg > Cluster attribute
+      > constants.py default, mirroring ``add_xray_contours``.
+    - ``*SUB`` (point-source-subtracted) maps need no masking; enable masking
+      only for un-subtracted cutouts via ``cluster.radio_mask_compact``.
+    """
+
+    # Namespaced kwarg overrides (radio_* takes precedence if supplied)
+    radio_kwargs = pop_prefixed_kwargs(kwargs, 'radio')
+
+    def _resolve(key, cluster_attr, current):
+        # radio_<key> kwarg > cluster.<cluster_attr> > current (function default)
+        if key in radio_kwargs:
+            return radio_kwargs.pop(key)
+        if cluster is not None and getattr(cluster, cluster_attr, None) is not None:
+            return getattr(cluster, cluster_attr)
+        return current
+
+    color        = _resolve('color', 'radio_color', color)
+    n_levels     = _resolve('n_levels', 'radio_n_levels', n_levels)
+    start_sigma  = _resolve('start_sigma', 'radio_start_sigma', start_sigma)
+    contour_step = _resolve('contour_step', 'radio_contour_step', contour_step)
+    smooth_pix   = _resolve('smooth_pix', 'radio_smooth_pix', smooth_pix)
+    linewidth    = _resolve('linewidth', 'radio_linewidth', linewidth)
+    linewidth    = radio_kwargs.pop('linewidths', linewidth)
+    outline       = radio_kwargs.pop('outline', outline)
+    outline_color = radio_kwargs.pop('outline_color', outline_color)
+    outline_extra = radio_kwargs.pop('outline_extra', outline_extra)
+
+    # Compact-source masking: explicit catalog arg > cluster config
+    if mask_catalog is None and cluster is not None and getattr(cluster, 'radio_mask_compact', False):
+        mask_catalog = getattr(cluster, 'radio_catalog_file', None)
+
+    # Load radio map and celestial WCS, then optionally mask and smooth
+    data, wcs_radio = load_radio_image(radio_fits_file)
+    if mask_catalog is not None:
+        data, n_masked = mask_compact_sources(data, wcs_radio, mask_catalog)
+        print(f"  masked {n_masked} compact radio sources")
+    if smooth_pix and smooth_pix > 0:
+        data = gaussian_filter(data, smooth_pix)
+
+    sigma = robust_rms(data)
+    if not np.isfinite(sigma) or sigma <= 0:
+        print(f"[WARNING] could not estimate radio RMS for {radio_fits_file}; skipping radio overlay")
+        return None
+
+    levels = radio_contour_levels(sigma, start_sigma, n_levels, contour_step)
+    contour_artist = ax.contour(
+        data,
+        levels=levels,
+        transform=ax.get_transform(wcs_radio),
+        colors=color,
+        linewidths=linewidth,
+        alpha=0.95,
+        **radio_kwargs,
+    )
+
+    if outline:
+        # Stroke a wider band of `outline_color` beneath each contour, leaving a
+        # thin halo (outline_extra/2 per side) that preserves contrast where
+        # light radio contours cross other contours.
+        effects = [
+            path_effects.Stroke(linewidth=linewidth + outline_extra, foreground=outline_color),
+            path_effects.Normal(),
+        ]
+        try:
+            contour_artist.set_path_effects(effects)
+        except AttributeError:
+            for c in contour_artist.collections:
+                c.set_path_effects(effects)
+
+    return contour_artist
+
+
 def define_contours_fov(
         z: np.ndarray,
         optical_data: np.ndarray,
@@ -454,9 +624,10 @@ def plot_optical(
     save_path=None,
     xray_fits_file=None,
     photometric_file=None,
+    radio_fits_file=None,
     bcg_file = None,
     bcg_background = "light",
-    legend_loc = "upper right",
+    legend_loc = None,
     show_optical=True,
     show_legend=True,
     show_scalebar=True,
@@ -485,18 +656,23 @@ def plot_optical(
         If provided, overlays X-ray contours from this FITS file.
     photometric_file : str or None
         If provided, overlays density contours from this photometric CSV file.
+    radio_fits_file : str or None
+        If provided, overlays radio continuum contours from this FITS file.
     bcg_file : str or None
         If provided, overlays BCG markers from this CSV file.
     bcg_background : str, optional
         "light" or "dark" - choose marker color scheme based on background.
-    legend_loc : str, optional
-        Location of legend (default: "upper right").
+    legend_loc : str or None, optional
+        Legend corner. If None, uses ``cluster.legend_loc`` (set by the cluster's
+        position in the field, shared across optical/X-ray/radio figures),
+        falling back to the package default ("upper right").
     show_optical : bool, optional
         If True, shows optical image; if False, shows blank background.
     **kwargs
         Additional options, including:
             - X-ray: xray_levels, xray_psf, xray_color, xray_alpha, xray_linewidth
             - Density: density_bandwidth, density_levels, density_skip, density_color, density_alpha, density_linewidth, density_weighted
+            - Radio: radio_start_sigma, radio_n_levels, radio_contour_step, radio_smooth_pix, radio_color, radio_linewidth, radio_outline
             - Scalebar: scalebar_arcmin, scalebar_color, scalebar_fontsize
 
     Returns
@@ -560,16 +736,33 @@ def plot_optical(
             **kwargs
         )
 
+    # --- Overlay radio contours ---
+    if radio_fits_file is not None:
+        add_radio_contours(
+            ax=ax,
+            radio_fits_file=radio_fits_file,
+            cluster=cluster,
+            **kwargs
+        )
+
     # --- Overlay BCG markers ---
     if bcg_file is not None:
         overlay_bcg_markers(ax, bcg_file, background=bcg_background)
 
     # --- Compose legend ---
+    # Legend location: explicit arg > cluster.legend_loc > package default
+    if legend_loc is None:
+        legend_loc = getattr(cluster, "legend_loc", None) or DEFAULT_LEGEND_LOC
+
     custom_handles = []
     if xray_fits_file is not None:
         custom_handles.append(Line2D([0], [0], color=kwargs.get('xray_color', 'tab:red'), lw=kwargs.get('xray_linewidth', 1.2), label='X-ray contours'))
     if photometric_file is not None:
         custom_handles.append(Line2D([0], [0], color=kwargs.get('density_color', 'tab:blue'), lw=kwargs.get('density_linewidth', 1.2), label='Density contours'))
+    if radio_fits_file is not None:
+        radio_legend_color = kwargs.get('radio_color') or getattr(cluster, 'radio_color', None) or DEFAULT_RADIO_COLOR
+        radio_legend_lw = kwargs.get('radio_linewidth') or getattr(cluster, 'radio_linewidth', None) or DEFAULT_RADIO_LINEWIDTH
+        custom_handles.append(Line2D([0], [0], color=radio_legend_color, lw=radio_legend_lw, label='Radio contours'))
 
     # Get handles/labels from actual artists (i.e., BCGs)
     handles, labels = ax.get_legend_handles_labels()

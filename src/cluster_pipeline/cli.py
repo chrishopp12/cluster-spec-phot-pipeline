@@ -101,15 +101,30 @@ def main():
 @click.option("--search-radius", type=float, default=None, help="Search radius for catalog queries (arcmin).")
 @click.option("--psf", type=float, default=None, help="PSF smoothing (arcsec).")
 @click.option("--survey", type=click.Choice(["legacy", "panstarrs"]), default=None)
+@click.option("--legend-loc", type=str, default=None,
+              help="Legend corner for field figures (e.g. 'upper right', 'lower left'); "
+                   "shared across optical/X-ray/radio. Persist per-cluster with --save.")
 # Xray / subcluster options
 @click.option("--subclusters", multiple=True, callback=_subclusters_callback, metavar="ID",
               help="BCG indices for subclusters (e.g., --subclusters 2,6 or "
                    "--subclusters 2 --subclusters 6).")
 @click.option("--radius", type=float, default=None, help="Subcluster search radius (arcmin).")
+# Radio options
+@click.option("--radio-file", type=str, default=None,
+              help="Radio FITS path relative to Radio/ (sets radio.filename).")
+@click.option("--radio-fov", type=float, default=None,
+              help="Radio overlay zoom FOV (arcmin); default: cluster FOV.")
+@click.option("--radio-start-sigma", type=float, default=None,
+              help="Lowest radio contour in units of sigma (default: 4.0).")
+@click.option("--radio-n-levels", type=int, default=None,
+              help="Number of radio contour levels (default: 12).")
+@click.option("--radio-contour-step", type=float, default=None,
+              help="Geometric step between radio contour levels (default: sqrt 2).")
 def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         verbose, diagnostics,
         ra, dec, redshift, z_min, z_max, fov, fov_full, ra_offset, dec_offset,
-        search_radius, psf, survey, subclusters, radius):
+        search_radius, psf, survey, legend_loc, subclusters, radius,
+        radio_file, radio_fov, radio_start_sigma, radio_n_levels, radio_contour_step):
     """Run pipeline stages for a cluster."""
     from cluster_pipeline.models.init_cluster import cluster_init
     from cluster_pipeline.config import load_config, save_config, merge_config
@@ -122,12 +137,25 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
                      ("z_min", z_min), ("z_max", z_max), ("fov", fov),
                      ("fov_full", fov_full), ("ra_offset", ra_offset),
                      ("dec_offset", dec_offset), ("search_radius", search_radius),
-                     ("psf", psf), ("survey", survey), ("radius", radius)]:
+                     ("psf", psf), ("survey", survey), ("legend_loc", legend_loc),
+                     ("radius", radius)]:
         if val is not None:
             cli_overrides[key] = val
 
+    # Radio overrides are nested under 'radio' in config but flat (radio_*) on
+    # the Cluster, so keep them separate from the top-level cli_overrides.
+    radio_cli = {}
+    for cfg_key, val in [("filename", radio_file), ("fov", radio_fov),
+                         ("start_sigma", radio_start_sigma),
+                         ("n_levels", radio_n_levels),
+                         ("contour_step", radio_contour_step)]:
+        if val is not None:
+            radio_cli[cfg_key] = val
+    radio_init_overrides = {f"radio_{k}": v for k, v in radio_cli.items()}
+
     # --- Initialize cluster ---
-    cluster = cluster_init(cluster_id, base_path=base_path, verbose=verbose, **cli_overrides)
+    cluster = cluster_init(cluster_id, base_path=base_path, verbose=verbose,
+                           **cli_overrides, **radio_init_overrides)
 
     # --- Load and merge config (auto-init if no config.yaml exists) ---
     cfg = load_config(cluster.cluster_path)
@@ -152,6 +180,8 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         save_config(cluster.cluster_path, cfg)
     if cli_overrides:
         cfg = merge_config(cfg, cli_overrides)
+    if radio_cli:
+        cfg = merge_config(cfg, {"radio": radio_cli})
 
     # --- Resolve z_range ---
     z_lo, z_hi = cluster.resolve_z_range(z_min=z_min, z_max=z_max)
@@ -346,6 +376,14 @@ def run(cluster_id, base_path, stages, save, save_plots, show_plots,
         click.echo("\n--- Stage 8: X-ray Processing ---")
         run_xray_imaging(cluster, save_plots=save_plots, show_plots=show_plots,
                          verbose=verbose)
+
+    # --- Radio overlay (independent of subclusters) ---
+    if "radio" in stages:
+        from cluster_pipeline.pipelines.radio import run_radio_imaging
+
+        click.echo("\n--- Stage 10: Radio Overlay ---")
+        run_radio_imaging(cluster, save_plots=save_plots, show_plots=show_plots,
+                          verbose=verbose)
 
     # --- Persist config if --save ---
     if save:

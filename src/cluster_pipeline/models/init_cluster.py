@@ -38,6 +38,7 @@ from cluster_pipeline.constants import (
     DEFAULT_PSF_ARCSEC,
     DEFAULT_BANDWIDTH,
     DEFAULT_MAG_MIN,
+    DEFAULT_LEGEND_LOC,
 )
 
 
@@ -174,6 +175,16 @@ def _merge_source(
             values["contour_levels"] = tuple(xray["contour_levels"])
         source = {k: v for k, v in source.items() if k != "xray"}
 
+    # Handle nested 'radio' section (flattened onto radio_* Cluster fields)
+    if "radio" in source and isinstance(source["radio"], dict):
+        radio = source["radio"]
+        for key in ("filename", "fov", "start_sigma", "n_levels", "contour_step",
+                    "smooth_pix", "color", "linewidth", "mask_compact", "mask_catalog"):
+            cfg_key = f"radio_{key}"
+            if key in radio and cfg_key not in values and radio[key] is not None:
+                values[cfg_key] = radio[key]
+        source = {k: v for k, v in source.items() if k != "radio"}
+
     for key, val in source.items():
         if key in ("bcgs", "subclusters", "groups"):
             continue  # These are handled separately, not Cluster fields
@@ -210,6 +221,7 @@ def _apply_defaults(values: dict[str, Any]) -> None:
         "search_radius": DEFAULT_SEARCH_RADIUS_ARCMIN,
         "survey": DEFAULT_SURVEY,
         "color_type": DEFAULT_COLOR_TYPE,
+        "legend_loc": DEFAULT_LEGEND_LOC,
         "phot_levels": DEFAULT_PHOT_LEVELS,
         "phot_skip": DEFAULT_PHOT_SKIP,
         "contour_levels": DEFAULT_CONTOUR_LEVELS,
@@ -238,7 +250,7 @@ def _apply_values(cluster: Cluster, values: dict[str, Any]) -> None:
             setattr(cluster, key, _safe_int(values[key]))
 
     # String fields
-    for key in ("name", "survey", "color_type"):
+    for key in ("name", "survey", "color_type", "legend_loc"):
         if key in values and values[key] is not None:
             setattr(cluster, key, str(values[key]))
 
@@ -251,6 +263,19 @@ def _apply_values(cluster: Cluster, values: dict[str, Any]) -> None:
             parts = cl.replace("(", "").replace(")", "").split(",")
             if len(parts) == 3:
                 cluster.contour_levels = (float(parts[0]), float(parts[1]), float(parts[2]))
+
+    # Radio fields (defaults live on the dataclass; only set what config/CLI supplied)
+    for key in ("radio_fov", "radio_start_sigma", "radio_contour_step",
+                "radio_smooth_pix", "radio_linewidth"):
+        if key in values:
+            setattr(cluster, key, _safe_float(values[key]))
+    if "radio_n_levels" in values:
+        cluster.radio_n_levels = _safe_int(values["radio_n_levels"])
+    for key in ("radio_filename", "radio_color", "radio_mask_catalog"):
+        if key in values and values[key] is not None:
+            setattr(cluster, key, str(values[key]))
+    if "radio_mask_compact" in values:
+        cluster.radio_mask_compact = bool(values["radio_mask_compact"])
 
 
 def _is_missing(val: Any) -> bool:
