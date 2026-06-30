@@ -497,6 +497,10 @@ def get_BCGs(
                     manual.z = seed.z
                 if manual.sigma_z is None:
                     manual.sigma_z = seed.sigma_z
+                if manual.phot_z is None:
+                    manual.phot_z = seed.phot_z
+                if manual.sigma_phot_z is None:
+                    manual.sigma_phot_z = seed.sigma_phot_z
                 if manual.probability is None:
                     manual.probability = seed.probability
                 # Replace in list
@@ -705,6 +709,8 @@ def _match_bcgs_phot(
             "BCG_probability": bcg.probability,
             "z": bcg.z,
             "sigma_z": bcg.sigma_z,
+            "phot_z": bcg.phot_z,
+            "sigma_phot_z": bcg.sigma_phot_z,
         })
 
     if not bcgs or phot_df.empty:

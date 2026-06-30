@@ -33,6 +33,12 @@ class BCG:
         Spectroscopic redshift, if known.
     sigma_z : float or None
         Redshift uncertainty.
+    phot_z : float or None
+        Photometric redshift (e.g. from an SED fit). Kept separate from `z` so
+        spec-only figures/tables never display a photo-z; downstream consumers
+        (e.g. the subcluster fitter) use it as a fallback when `z` is absent.
+    sigma_phot_z : float or None
+        Photometric-redshift uncertainty.
     rank : int or None
         redMaPPer centering rank (1 = most likely center).
     probability : float or None
@@ -46,6 +52,8 @@ class BCG:
     dec: float
     z: float | None = None
     sigma_z: float | None = None
+    phot_z: float | None = None
+    sigma_phot_z: float | None = None
     rank: int | None = None
     probability: float | None = None
     label: str = ""
@@ -80,7 +88,8 @@ class BCG:
         bcg_id : int
             The BCG identifier.
         cfg : dict
-            Keys: ra, dec, and optionally z, sigma_z, rank, prob, label.
+            Keys: ra, dec, and optionally z, sigma_z, phot_z, sigma_phot_z,
+            rank, prob, label.
         """
         return cls(
             bcg_id=bcg_id,
@@ -88,6 +97,8 @@ class BCG:
             dec=cfg["dec"],
             z=cfg.get("z"),
             sigma_z=cfg.get("sigma_z"),
+            phot_z=cfg.get("phot_z"),
+            sigma_phot_z=cfg.get("sigma_phot_z"),
             rank=cfg.get("rank"),
             probability=cfg.get("prob", cfg.get("probability")),
             label=cfg.get("label", str(bcg_id)),
@@ -120,6 +131,8 @@ class BCG:
             dec=float(row["Dec"]),
             z=_safe(row.get("z")),
             sigma_z=_safe(row.get("sigma_z")),
+            phot_z=_safe(row.get("phot_z")),
+            sigma_phot_z=_safe(row.get("sigma_phot_z")),
             rank=_safe(row.get("BCG_priority")),
             probability=_safe(row.get("BCG_probability")),
             label=str(row.get("label", bid)),
@@ -132,6 +145,10 @@ class BCG:
             d["z"] = self.z
         if self.sigma_z is not None:
             d["sigma_z"] = self.sigma_z
+        if self.phot_z is not None:
+            d["phot_z"] = self.phot_z
+        if self.sigma_phot_z is not None:
+            d["sigma_phot_z"] = self.sigma_phot_z
         if self.rank is not None:
             d["rank"] = self.rank
         if self.probability is not None:
