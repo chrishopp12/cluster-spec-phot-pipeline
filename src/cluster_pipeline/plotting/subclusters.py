@@ -55,10 +55,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import matplotlib.axes as maxes
 from matplotlib.patches import ConnectionPatch
 from matplotlib.ticker import FuncFormatter, MaxNLocator, MultipleLocator, FormatStrFormatter
 from matplotlib.gridspec import GridSpec
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -704,21 +706,6 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
     legend.set_zorder(200)
 
     fig.subplots_adjust(top=0.98, bottom=0.1, left=0.2, right=0.94)
-    # -- Colorbar placement --
-    if colorbar:
-        pos = ax1.get_position()
-        # Colorbar above ax1 (bottom panel)
-        cbar_ax = fig.add_axes([
-            pos.x0,              # left edge
-            pos.y1 + 0.04,       # slightly above top edge
-            pos.width,           # width of axes
-            0.015                # thickness of cbar
-        ])
-        cbar = fig.colorbar(sc, cax=cbar_ax, orientation='horizontal')
-
-        cbar.locator = MaxNLocator(nbins=5)
-        cbar.formatter = FormatStrFormatter('%.3f')
-        cbar.update_ticks()
 
     # Load spectroscopic data
     spec_df = pd.read_csv(cluster.spec_file)
@@ -795,8 +782,19 @@ def plot_redshift_histogram_heatmap(cluster, legend_loc="lower right", fig=None,
     for con in [con1, con2]:
         ax2.add_artist(con)
 
+    # -- Colorbar: anchored to ax1 via make_axes_locatable so it stays in the layout --
+    if colorbar:
+        divider = make_axes_locatable(ax1)
+        cbar_ax = divider.append_axes("top", size="3%", pad="8%", axes_class=maxes.Axes)
+        cbar = fig.colorbar(sc, cax=cbar_ax, orientation='horizontal')
+        cbar_ax.xaxis.set_ticks_position('top')
+        cbar_ax.xaxis.set_label_position('top')
+        cbar.locator = MaxNLocator(nbins=5)
+        cbar.formatter = FormatStrFormatter('%.3f')
+        cbar.update_ticks()
 
-    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots, filename="redshifts_hist_hmap.pdf")
+    finalize_figure(fig, save_path=save_path, save_plots=save_plots, show_plots=show_plots,
+                    filename="redshifts_hist_hmap.pdf", bbox_inches=None)
 
 
 def plot_2panel_optical_contours(

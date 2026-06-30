@@ -106,7 +106,13 @@ def finalize_figure(
     save_plots: bool = False,
     save_path: str | None | os.PathLike = None,
     filename: str | None = None,
+    bbox_inches: str | None = "tight",
 ) -> None:
+    # bbox_inches: defaults to "tight" (crops whitespace) for every figure. Pass
+    # None for figures whose composition is already hand-tuned AND that carry a
+    # colorbar placed in figure/divider coordinates: the tight-bbox crop remaps
+    # absolute positions in the PDF backend and misrenders the colorbar QuadMesh
+    # (the gradient lands in the wrong corner while the cax frame stays put).
     save_file = resolve_save_path(save_plots, save_path, filename)
 
     if save_file:
@@ -119,7 +125,7 @@ def finalize_figure(
 
             # Avoid Type3 embedding path; keep PDF output consistent
             with mpl.rc_context({"pdf.fonttype": 42, "ps.fonttype": 42}):
-                fig.savefig(staged, dpi=DEFAULT_DPI, bbox_inches="tight")
+                fig.savefig(staged, dpi=DEFAULT_DPI, bbox_inches=bbox_inches)
 
             shutil.move(str(staged), str(save_file))
 
