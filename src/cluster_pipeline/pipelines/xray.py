@@ -328,6 +328,7 @@ def run_subcluster_analysis(
         try:
             plot_redshift_histogram_heatmap(
                 cluster=cluster,
+                legend_loc=cluster.legend_loc,
                 save_plots=save_plots,
                 show_plots=show_plots,
                 save_path=save_path,
